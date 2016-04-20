@@ -1,0 +1,136 @@
+\newcount\qr@gf@a
+\newcount\qr@gf@b
+\newcount\qr@gf@r
+\newcount\qr@gf@n
+\newcount\qr@a
+\newcount\qr@b
+\newcount\qr@c
+
+\newcommand*\csgchardef[1]{%
+	\expandafter\global\expandafter\chardef\csname#1\endcsname
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Implement the GF(256) arithmetic
+%
+% \gfadd{r}{a}{b}  sets r = a + b
+% \gfmul{r}{a}{b}  sets r = a * b
+% \gflog{r}{a}     sets r = log_alpha a
+% \gfantilog{r}{a} sets r = alpha^a
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand*\qr@xor@bit{%
+	\ifodd\qr@gf@a
+		\ifodd\qr@gf@b\else
+			\advance\qr@gf@r\qr@gf@n
+		\fi
+	\else
+		\ifodd\qr@gf@b
+			\advance\qr@gf@r\qr@gf@n
+		\fi
+	\fi
+	\divide\qr@gf@a\tw@
+	\divide\qr@gf@b\tw@
+	\advance\qr@gf@n\qr@gf@n
+}
+
+\newcommand*\gfadd[3]{%
+	\qr@gf@a=#2%
+	\qr@gf@b=#3%
+	\qr@gf@r=\z@
+	\qr@gf@n=\@ne
+	\qr@xor@bit
+	\qr@xor@bit
+	\qr@xor@bit
+	\qr@xor@bit
+	\qr@xor@bit
+	\qr@xor@bit
+	\qr@xor@bit
+	\qr@xor@bit
+	#1=\qr@gf@r
+}
+
+% Construct the log and antilog tables.
+\qr@a=\z@
+\qr@b=\@ne
+\loop
+	\csgchardef{gf@antilog@\number\qr@a}=\qr@b
+	\csgchardef{gf@log@\number\qr@b}=\qr@a
+	\advance\qr@a\@ne
+	% qr@b <- qr@b*2
+	\advance\qr@b\qr@b
+	% if qr@b > 255 then qr@b <- qr@b (+) 285
+	\ifnum\qr@b>255
+		\advance\qr@b-256
+		\gfadd\qr@b\qr@b{29}%
+	\fi
+\ifnum\qr@a<255\repeat
+\csgchardef{gf@antilog@255}=\@ne
+
+\newcommand*\gflog[2]{%
+	#1=\csname gf@log@\number#2\endcsname
+}
+
+\newcommand*\gfantilog[2]{%
+	#1=\csname gf@antilog@\number#2\endcsname
+}
+
+\newcommand*\gfmul[3]{%
+	\qr@gf@a=#2%
+	\qr@gf@b=#3%
+	\ifnum\qr@gf@a=\z@
+		#1=\z@
+	\else \ifnum\qr@gf@b=\z@
+		#1=\z@
+	\else
+		\gflog\qr@gf@a\qr@gf@a
+		\gflog\qr@gf@b\qr@gf@b
+		\advance\qr@gf@a\qr@gf@b
+		\ifnum\qr@gf@a>255
+			\advance\qr@gf@a-256
+		\fi
+		\gfantilog{#1}\qr@gf@a
+	\fi\fi
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Generator polynomials
+%
+% Given n>0, compute (x + alpha^0) * ... * (x + alpha^{n-1}), setting
+% \qrgen@i to the coefficient of x^i for i in 0, ..., n.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand*\qrgen[1]{%
+	\csname qr@gen@\number#1\endcsname
+}
+
+\newcommand*\qrgenpoly[1]{%
+	% x + 1
+	%\csgchardef{qr@gen@1}=\@ne
+	\csgchardef{qr@gen@0}=\@ne
+	\qr@a=\z@
+	\loop\ifnum#1>\qr@a
+		\qr@b=\qr@a
+		\advance\qr@b\@ne
+		\csgchardef{qr@gen@\number\qr@b}=\@ne
+		\gfantilog\qr@c\qr@a
+		\qr@genpoly@inner
+		\gfmul\qr@b{\qrgen\z@}\qr@c
+		\csgchardef{qr@gen@0}=\qr@b
+		\advance\qr@a\@ne
+	\repeat
+}
+\newcommand*\qr@genpoly@inner{%
+	\begingroup
+	\loop\ifnum\qr@a>\z@
+		\gfmul\qr@b{\qr@c}{\qrgen\qr@a}%
+		\advance\qr@a-1
+		\gfadd\qr@b\qr@b{\qrgen\qr@a}%
+		\advance\qr@a\@ne
+		\csgchardef{qr@gen@\number\qr@a}=\qr@b
+		\advance\qr@a-1
+	\repeat
+	\endgroup
+}

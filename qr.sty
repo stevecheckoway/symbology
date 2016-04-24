@@ -1,3 +1,11 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{qr}
+  [2016/04/20 v1.0 Construct QR codes]
+
+\RequirePackage{etoolbox}
+
+\newdimen\qr@width
+\newcount\qr@len
 \newcount\qr@gf@a
 \newcount\qr@gf@b
 \newcount\qr@gf@r
@@ -5,6 +13,8 @@
 \newcount\qr@a
 \newcount\qr@b
 \newcount\qr@c
+\newcount\qr@idx
+\newif\ifqr@inrange
 
 \newcommand*\csgchardef[1]{%
 	\expandafter\global\expandafter\chardef\csname#1\endcsname
@@ -68,11 +78,11 @@
 \csgchardef{gf@antilog@255}=\@ne
 
 \newcommand*\gflog[2]{%
-	#1=\csname gf@log@\number#2\endcsname
+	#1=\csuse{gf@log@\number#2}%
 }
 
 \newcommand*\gfantilog[2]{%
-	#1=\csname gf@antilog@\number#2\endcsname
+	#1=\csuse{gf@antilog@\number#2}%
 }
 
 \newcommand*\gfmul[3]{%
@@ -99,9 +109,8 @@
 % Generator polynomials
 %
 % Given n>0, compute (x + alpha^0) * ... * (x + alpha^{n-1}), setting
-% \qrgen@i to the coefficient of x^i for i in 0, ..., n.
+% \qr@gen@i to the coefficient of x^i for i in 0, ..., n.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 \newcommand*\qrgen[1]{%
 	\csname qr@gen@\number#1\endcsname
 }
@@ -134,3 +143,456 @@
 	\repeat
 	\endgroup
 }
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Polynomial remainder
+%
+% The divisor must be a monic polynomial.
+% \qr@poly@remainder{result}{dividend}[dividenddeg}{divisor}{divisordeg}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@poly@remainder[5]{%
+	\begingroup
+	\edef\qr@result{#1}%
+	\edef\qr@dividend{#2}%
+	\edef\qr@divisor{#4}%
+	% Copy x^{deg(divisor)}dividend to result
+	\qr@a=#3\relax
+	\qr@b=#5\relax
+	\count@=\qr@a
+	% for (count@ = deg(dividend); count@ >= 0; --count@)
+	%   result[count@ + deg(divisor)] = dividend[count@]
+	\loop\ifnum\count@>\m@ne
+		\qr@c=\numexpr \count@+\qr@b\relax
+		\csgchardef{\qr@result\number\qr@c}=\csname\qr@dividend\number\count@\endcsname
+		\advance\count@\m@ne
+	\repeat
+	% Set the next deg(divisor) coefficients to 0.
+	\count@=\qr@b
+	\loop\ifnum\count@>\z@
+		\advance\count@\m@ne
+		\csgchardef{\qr@result\number\count@}=\z@
+	\repeat
+	% Perform the division.
+	% for (a=deg(dividend); a > 0; --a)
+	%  c = result[a+deg(divisor)]
+	%  for (b=deg(divisor); b >= 0; --b)
+	%    result[a + b] = result[a + b] (+) c*divisor[b]
+	%  result[a + deg(divisor) = undefined
+	% Since the divisor is monic, when b=deg(divisor), result[a+b]=0 and
+	% really, we're going to undefine result[a+b] anyway, so just scip
+	% that by moving the --b to the beginning of the inner loop and make
+	% the guard >0.
+	\loop\ifnum\qr@a>\z@
+		% We need to protect the inner loop with braces so the inner
+		% \repeat does not match the outer \loop. This has the side
+		% effect of letting us use \qr@b as a counter since it'll be
+		% restore after the loop.
+		{%
+		\qr@c=\csname\qr@result\number\numexpr\qr@a+\qr@b\relax\endcsname
+		\loop\ifnum\qr@b>\z@
+			\advance\qr@b\m@ne
+			\gfmul\count@\qr@c{\csname\qr@divisor\number\qr@b\endcsname}%
+			\count\z@=\numexpr \qr@a+\qr@b \relax
+			\gfadd\count@\count@{\csname\qr@result\number\count\z@\endcsname}%
+			\csgchardef{\qr@result\number\count\z@}=\count@
+		\repeat
+		}
+		\expandafter\let\csname\qr@result\number\numexpr\qr@a+\qr@b\endcsname=\@undefined
+		\advance\qr@a\m@ne
+	\repeat
+	\endgroup
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Iterate over each token in \qr@str and expand #1 with \qr@token set to the
+% token.
+\newcommand*\qr@foreach@token[1]{%
+	\def\qr@foreach@v{#1}%
+	\expandafter\futurelet\expandafter\qr@token\expandafter\qr@foreach\qr@str\qr@foreach
+}
+
+\def\qr@foreach{%
+	\ifx\qr@token\qr@foreach
+		\let\qr@next\@gobble
+	\else
+		\ifx\qr@token\@sptoken
+			\let\qr@next\qr@foreach@space
+		\else
+			\let\qr@next\qr@foreach@nonspace
+		\fi
+	\fi
+	\qr@next
+}
+
+\def\qr@foreach@nonspace#1{%
+	\def\qr@token{#1}%
+	\qr@foreach@v
+	\futurelet\qr@token\qr@foreach
+}
+% Use the \@xifnch trick (see sources2e) to get a space token in the
+% definition of \qr@foreach@space as a delimiter.
+\begingroup
+\def\:{\qr@foreach@space}
+\expandafter\gdef\: {%
+	\def\qr@token{ }%
+	\qr@foreach@v
+	\futurelet\qr@token\qr@foreach
+}
+\endgroup
+
+\newcommand*\qr@check@range[3]{%
+	\qr@inrangefalse
+	\ifnum#1>#3\else
+		\ifnum#1<#2\else
+			\qr@inrangetrue
+		\fi
+	\fi
+}
+
+\newcommand*\qr@analyze@str{%
+	\qr@len=\z@
+	\qr@a=\@ne % Numeric.
+	\qr@b=\@ne % Alphanumeric.
+	\qr@foreach@token{%
+		\advance\qr@len\@ne
+		\ifnum\qr@b=\@ne
+			\qr@c=\expandafter`\qr@token
+			\qr@check@range\qr@c{`0}{`9}%
+			\ifqr@inrange\else
+				\qr@a=\z@
+				\qr@check@range\qr@c{`A}{`Z}%
+				\ifqr@inrange
+				\else\ifnum\qr@c=`\ %
+				\else\ifnum\qr@c=`\$%
+				\else\ifnum\qr@c=`\%%
+				\else\ifnum\qr@c=`\*%
+				\else\ifnum\qr@c=`\+%
+				\else\ifnum\qr@c=`\-%
+				\else\ifnum\qr@c=`\.%
+				\else\ifnum\qr@c=`\/%
+				\else\ifnum\qr@c=`\:%
+				\else
+					\qr@b=\z@
+				\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+			\fi
+		\fi
+	}%
+	\ifnum\qr@a=\@ne
+		\def\qr@mode{numeric}%
+	\else\ifnum\qr@b=\@ne
+		\def\qr@mode{alphanum}%
+	\else
+		\def\qr@mode{byte}%
+	\fi\fi\fi
+}
+
+\newcommand*\qr@select@version@numeric@mode{%
+}
+
+\newcommand*\qr@select@version@alphanum@mode{%
+}
+
+\newcommand*\qr@select@version@byte@mode{%
+	\qr@v 40 2954 2332 1664 1274.%
+	\qr@v 39 2810 2214 1580 1220.%
+	\qr@v 38 2700 2100 1500 1140.%
+	\qr@v 37 2564 1990 1424 1094.%
+	\qr@v 36 2432 1912 1352 1052.%
+	\qr@v 35 2304 1810 1284 984.%
+	\qr@v 34 2189 1723 1229 959.%
+	\qr@v 33 2069 1629 1169 899.%
+	\qr@v 32 1953 1539 1113 843.%
+	\qr@v 31 1841 1453 1031 791.%
+	\qr@v 30 1733 1371 983 743.%
+	\qr@v 29 1629 1265 909 699.%
+	\qr@v 28 1529 1191 869 659.%
+	\qr@v 27 1466 1126 806 626.%
+	\qr@v 26 1368 1060 752 594.%
+	\qr@v 25 1274 998 716 536.%
+	\qr@v 24 1172 912 662 512.%
+	\qr@v 23 1092 858 612 462.%
+	\qr@v 22 1004 780 566 440.%
+	\qr@v 21 930 712 510 404.%
+	\qr@v 20 859 667 483 383.%
+	\qr@v 19 793 625 443 339.%
+	\qr@v 18 719 561 395 311.%
+	\qr@v 17 645 505 365 281.%
+	\qr@v 16 587 451 323 251.%
+	\qr@v 15 521 413 293 221.%
+	\qr@v 14 459 363 259 195.%
+	\qr@v 13 426 332 242 178.%
+	\qr@v 12 368 288 204 156.%
+	\qr@v 11 322 252 178 138.%
+	\qr@v 10 272 214 152 120.%
+	\qr@v 9 231 181 131 99.%
+	\qr@v 8 193 153 109 85.%
+	\qr@v 7 155 123 87 65.%
+	\qr@v 6 135 107 75 59.%
+	\qr@v 5 107 85 61 45.%
+	\qr@v 4 79 63 47 35.%
+	\qr@v 3 54 43 33 25.%
+	\qr@v 2 33 27 21 15.%
+	\qr@v 1 18 15 12 8.%
+}
+
+\newcommand*\qr@set@parameters{%
+	% Compute the length of the string
+	\qr@len=\z@
+	\qr@foreach@token{\advance\qr@len\@ne}
+	%
+	% Based on the error correction and length, pick the smallest QR
+	% version for byte mode.
+	\if L\qr@ecl
+		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##2 \chardef\qr@ver=##1\relax\fi}%
+		\def\qr@next##1##2##3##4{\qr@next##1.}%
+	\else \if M\qr@ecl
+		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##3 \chardef\qr@ver=##1\relax\fi}%
+		\def\qr@next##1##2##3##4{\qr@next##2.}%
+	\else \if Q\qr@ecl
+		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##4 \chardef\qr@ver=##1\relax\fi}%
+		\def\qr@next##1##2##3##4{\qr@next##3.}%
+	\else \if H\qr@ecl
+		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##5 \chardef\qr@ver=##1\relax\fi}%
+		\def\qr@next##1##2##3##4{\qr@next##4.}%
+	\else
+		\PackageError{qr}{Invalid error correction parameter.}
+			{Valid values are L, M, Q, and H}%
+	\fi\fi\fi\fi
+	\chardef\qr@ver=\z@
+	% Pick the appropriate version for the mode.
+	\csname\qr@select@version@\qr@mode @mode\endcsname
+	\ifnum\qr@ver=\z@
+		\PackageError{qr}{String is too long for given error
+			correction level}{}%
+	\fi
+	% Set the other parameters.
+	\let\qr@v\qr@next
+	\def\qr@next##1 ##2 ##3 ##4.{%
+		\chardef\qr@total@data@words=##1\relax
+		\chardef\qr@ecc@codewords=##2\relax
+		\chardef\qr@blks@per@groupi=##3\relax
+		\chardef\qr@words@per@blki=##4\relax
+	}%
+	\message{\number\qr@ver}%
+	\ifcase\qr@ver
+	\or\qr@v{19 7 1 19}{16 10 1 16}{13 13 1 13}{9 17 1 9}% 1
+	\or\qr@v{34 10 1 34}{28 16 1 28}{22 22 1 22}{16 28 1 16}% 2
+	\or\qr@v{55 15 1 55}{44 26 1 44}{34 18 2 17}{26 22 2 13}% 3
+	\or\qr@v{80 20 1 80}{64 18 2 32}{48 26 2 24}{36 16 4 9}% 4
+	\or\qr@v{108 26 1 108}{86 24 2 43}{62 18 2 15}{46 22 2 11}% 5
+	\or\qr@v{136 18 2 68}{108 16 4 27}{76 24 4 19}{60 28 4 15}% 6
+	\or\qr@v{156 20 2 78}{124 18 4 31}{88 18 2 14}{66 26 4 13}% 7
+	\or\qr@v{194 24 2 97}{154 22 2 38}{110 22 4 18}{86 26 4 14}% 8
+	\or\qr@v{232 30 2 116}{182 22 3 36}{132 20 4 16}{100 24 4 12}% 9
+	\or\qr@v{274 18 2 68}{216 26 4 43}{154 24 6 19}{122 28 6 15}% 10
+	\or\qr@v{324 20 4 81}{254 30 1 50}{180 28 4 22}{140 24 3 12}% 11
+	\or\qr@v{370 24 2 92}{290 22 6 36}{206 26 4 20}{158 28 7 14}% 12
+	\or\qr@v{428 26 4 107}{334 22 8 37}{244 24 8 20}{180 22 12 11}% 13
+	\or\qr@v{461 30 3 115}{365 24 4 40}{261 20 11 16}{197 24 11 12}% 14
+	\or\qr@v{523 22 5 87}{415 24 5 41}{295 30 5 24}{223 24 11 12}% 15
+	\or\qr@v{589 24 5 98}{453 28 7 45}{325 24 15 19}{253 30 3 15}% 16
+	\or\qr@v{647 28 1 107}{507 28 10 46}{367 28 1 22}{283 28 2 14}% 17
+	\or\qr@v{721 30 5 120}{563 26 9 43}{397 28 17 22}{313 28 2 14}% 18
+	\or\qr@v{795 28 3 113}{627 26 3 44}{445 26 17 21}{341 26 9 13}% 19
+	\or\qr@v{861 28 3 107}{669 26 3 41}{485 30 15 24}{385 28 15 15}% 20
+	\or\qr@v{932 28 4 116}{714 26 17 42}{512 28 17 22}{406 30 19 16}% 21
+	\or\qr@v{1006 28 2 111}{782 28 17 46}{568 30 7 24}{442 24 34 13}% 22
+	\or\qr@v{1094 30 4 121}{860 28 4 47}{614 30 11 24}{464 30 16 15}% 23
+	\or\qr@v{1174 30 6 117}{914 28 6 45}{664 30 11 24}{514 30 30 16}% 24
+	\or\qr@v{1276 26 8 106}{1000 28 8 47}{718 30 7 24}{538 30 22 15}% 25
+	\or\qr@v{1370 28 10 114}{1062 28 19 46}{754 28 28 22}{596 30 33 16}% 26
+	\or\qr@v{1468 30 8 122}{1128 28 22 45}{808 30 8 23}{628 30 12 15}% 27
+	\or\qr@v{1531 30 3 117}{1193 28 3 45}{871 30 4 24}{661 30 11 15}% 28
+	\or\qr@v{1631 30 7 116}{1267 28 21 45}{911 30 1 23}{701 30 19 15}% 29
+	\or\qr@v{1735 30 5 115}{1373 28 19 47}{985 30 15 24}{745 30 23 15}% 30
+	\or\qr@v{1843 30 13 115}{1455 28 2 46}{1033 30 42 24}{793 30 23 15}% 31
+	\or\qr@v{1955 30 17 115}{1541 28 10 46}{1115 30 10 24}{845 30 19 15}% 32
+	\or\qr@v{2071 30 17 115}{1631 28 14 46}{1171 30 29 24}{901 30 11 15}% 33
+	\or\qr@v{2191 30 13 115}{1725 28 14 46}{1231 30 44 24}{961 30 59 16}% 34
+	\or\qr@v{2306 30 12 121}{1812 28 12 47}{1286 30 39 24}{986 30 22 15}% 35
+	\or\qr@v{2434 30 6 121}{1914 28 6 47}{1354 30 46 24}{1054 30 2 15}% 36
+	\or\qr@v{2566 30 17 122}{1992 28 29 46}{1426 30 49 24}{1096 30 24 15}% 37
+	\or\qr@v{2702 30 4 122}{2102 28 13 46}{1502 30 48 24}{1142 30 42 15}% 38
+	\or\qr@v{2812 30 20 117}{2216 28 40 47}{1582 30 43 24}{1222 30 10 15}% 39
+	\or\qr@v{2956 30 19 118}{2334 28 18 47}{1666 30 34 24}{1276 30 20 15}% 40
+	\fi
+	\qr@a=\numexpr \qr@total@data@words-\qr@blks@per@groupi*\qr@words@per@blki \relax
+	\ifnum\qr@a>\z@
+		\chardef\qr@blks@per@groupii=\numexpr \qr@blks@per@groupi+\@ne\relax
+		\divide\qr@a\qr@blks@per@groupii
+		\chardef\qr@words@per@blkii=\qr@a
+	\else
+		\chardef\qr@blks@per@groupii=\z@
+		\chardef\qr@words@per@blkii=\z@
+	\fi
+	\dbg\qr@ver
+	\dbg\qr@total@data@words
+	\dbg\qr@ecc@codewords
+	\dbg\qr@blks@per@groupi
+	\dbg\qr@words@per@blki
+	\dbg\qr@blks@per@groupii
+	\dbg\qr@words@per@blkii
+	\qr@reset@data@ptr
+}
+\newcommand*\dbg[1]{\message{\string#1=\number#1^^J}}
+
+\def\qr@reset@data@ptr{%
+	\chardef\qr@grp=\@ne
+	\chardef\qr@blk=\z@
+	\qr@idx=\z@
+	\chardef\qr@blks@per@group=\qr@blks@per@groupi
+	\chardef\qr@words@per@blk=\qr@words@per@blki
+}
+
+\def\qr@advance@data@ptr{%
+	\ifnum\qr@grp=\thr@@
+		\PackageError{qr}{Internal error
+			\string\qr@advance@data@ptr}{}
+	\fi
+	\advance\qr@idx\@ne
+	\ifnum\qr@idx=\qr@words@per@blk
+		% Move to next block.
+		\qr@idx=\z@
+		\count@=\numexpr\qr@blk+\@ne\relax
+		\chardef\qr@blk=\count@
+		\ifnum\qr@blk=\qr@blks@per@group
+			% Move to next group.
+			\chardef\qr@blk=\z@
+			\ifnum\qr@grp=\@ne
+				\ifnum\qr@words@per@blkii>\z@
+					\chardef\qr@grp=\tw@
+					\chardef\qr@blks@per@group=\qr@blks@per@groupii
+					\chardef\qr@words@per@blk=\qr@words@per@blkii
+				\else
+					\chardef\qr@grp=\thr@@
+					\chardef\qr@words@per@blk=\z@
+					\chardef\qr@blks@per@group=\z@
+				\fi
+			\else
+				\chardef\qr@grp=\thr@@
+				\chardef\qr@words@per@blk=\z@
+				\chardef\qr@blks@per@group=\z@
+			\fi
+		\fi
+	\fi
+}
+
+\newcommand*\qr@append@word[1]{%
+	\message{\number\qr@grp.\number\qr@blk.\number\qr@idx=\number#1^^J}%
+	\csgchardef{qr@msg@\number\qr@grp.\number\qr@blk.\number\qr@idx}=#1\relax
+	\qr@advance@data@ptr
+}
+
+% Byte mode
+\newcommand*\qr@encode@byte{%
+	%\message{\number\qr@a\space\number\qr@b^^J}%
+	% c = b / 16
+	\qr@c=\qr@b
+	\divide\qr@c\sixt@@n
+	% append(a + c)
+	\qr@append@word{\numexpr \qr@a+\qr@c\relax}%
+	% a = b - c*16
+	\qr@a=\numexpr \qr@b-\qr@c*\sixt@@n\relax
+	% a = a*16
+	\multiply\qr@a\sixt@@n
+}
+
+\newcommand*\qr@encode@bytes{%
+	\qr@a="80 % byte mode
+	\ifnum\qr@ver<10
+		% 8 bits of character count
+		\qr@b=\qr@len
+		\qr@encode@byte
+	\else
+		% 16 bits of character count
+		\qr@b=\numexpr\qr@len/\@cclvi\relax
+		\qr@encode@byte
+		\qr@b=\qr@len
+		\qr@c=\qr@b
+		\divide\qr@c \@cclvi
+		\multiply\qr@c \@cclvi
+		\advance\qr@b -\qr@c
+		\qr@encode@byte
+	\fi
+	% Encode bytes.
+	\qr@foreach@token{%
+		\qr@b=\expandafter`\qr@token
+		\qr@encode@byte
+	}%
+	% Add terminator 0s, 4 bits are necessary.
+	\qr@b=\z@
+	\qr@encode@byte
+}
+
+\newcommand*\qr@add@padding{%
+	% Number of words encoded so far.
+	\ifcase\qr@grp \PackageError{qr}{Internal padding error}{}%
+	\or \qr@b=\numexpr \qr@blk*\qr@words@per@blki +\qr@idx\relax
+	\or \qr@b=\numexpr \qr@blks@per@groupi*\qr@words@per@blki +%
+		\qr@blk*\qr@words@per@blkii +\qr@idx\relax
+	\or \qr@b=\qr@a
+	\else \PackageError{qr}{Internal padding error 2}{}%
+	\fi
+	% Number of words of padding.
+	\qr@a=\numexpr\qr@total@data@words-\qr@b\relax
+	% Append 236 and 17 until the full size has been reached.
+	\loop\ifnum\qr@a>\@ne
+		\qr@append@word{236}%
+		\qr@append@word{17}%
+		\advance\qr@a-2
+	\repeat
+	\ifnum\qr@a>\z@
+		\qr@append@word{236}%
+	\fi
+}
+
+\newcommand*\qr@compute@ecc{%
+	% Construct the generator polynomial.
+	\qrgenpoly\qr@ecc@codewords
+	% Compute the ECC for each block in group 1.
+	\qr@a=\z@
+	\qr@b=\numexpr\qr@words@per@blki-\@ne\relax
+	\loop\ifnum\qr@a<\qr@blks@per@groupi
+		\qr@poly@remainder
+			{qr@ecc@1.\number\qr@a.}%
+			{qr@msg@1.\number\qr@a.}\qr@b
+			{qr@gen@}\qr@ecc@codewords
+		\advance\qr@a\@ne
+	\repeat
+	% Compute the ECC for each block in group 2.
+	\qr@a=\z@
+	\qr@b=\numexpr\qr@words@per@blkii-\@ne\relax
+	\loop\ifnum\qr@a<\qr@blks@per@groupii
+		\qr@poly@remainder
+			{qr@ecc@2.\number\qr@a.}%
+			{qr@msg@2.\number\qr@a.}\qr@b
+			{qr@gen@}\qr@ecc@codewords
+		\advance\qr@a\@ne
+	\repeat
+}
+
+% \qrcode[compression]{width}{str}
+\newcommand\qrcode[3][Q]{%
+	\edef\qr@ecl{#1}%
+	\setlength\qr@width{#2}%
+	\edef\qr@str{\detokenize{#3}}%
+	\qr@analyze@str
+	\qr@set@parameters
+	\qr@encode@bytes
+	\let\qr@str\relax
+	\qr@add@padding
+	\qrdumpdata
+	\qr@compute@ecc
+	%\qr@interleave
+}
+
+\newcommand*\qrdumpdata{%
+	\qr@reset@data@ptr
+	\loop\ifnum\qr@grp<\thr@@
+		\number\csname qr@msg@\number\qr@grp.\number\qr@blk.\number\qr@idx\endcsname
+		\qr@advance@data@ptr
+		\
+	\repeat
+}
+

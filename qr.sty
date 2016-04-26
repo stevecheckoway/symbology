@@ -3,6 +3,7 @@
   [2016/04/20 v1.0 Construct QR codes]
 
 \RequirePackage{etoolbox}
+\RequirePackage{trace}
 
 \newdimen\qr@width
 \newcount\qr@len
@@ -18,6 +19,36 @@
 
 \newcommand*\csgchardef[1]{%
 	\expandafter\global\expandafter\chardef\csname#1\endcsname
+}
+
+\newcommand*\qr@array@set[3]{%
+	\global
+	\expandafter\expandafter\expandafter
+	\chardef#1{#2}=\numexpr#3\relax
+}
+
+\newcommand*\qr@array@unset[2]{%
+	\global
+	\expandafter\expandafter\expandafter
+	\let#1{#2}=\@undefined
+}
+
+\newcommand*\qr@make@array[2]{%
+	\edef#1##1{%
+		\noexpand\csname#2\noexpand\number\noexpand\numexpr##1\relax\noexpand\endcsname
+	}%
+}
+
+% View an array as a deg-degree polynomial.
+% E.g., view a[0], a[1], ..., a[deg] as
+% a[0]x^{deg} + a[1]x^{deg-1} + ... + a[deg-1]
+% \qr@polynomial@view\poly{array}{deg}
+\newcommand*\qr@polynomial@view[3]{%
+	\edef#1##1{%
+		\noexpand\csname#2\noexpand\number\noexpand\numexpr
+			\number\numexpr#3\relax-(##1)\relax
+		\noexpand\endcsname
+	}%
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -96,8 +127,8 @@
 		\gflog\qr@gf@a\qr@gf@a
 		\gflog\qr@gf@b\qr@gf@b
 		\advance\qr@gf@a\qr@gf@b
-		\ifnum\qr@gf@a>255
-			\advance\qr@gf@a-256
+		\ifnum\qr@gf@a>254
+			\advance\qr@gf@a-\@cclv
 		\fi
 		\gfantilog{#1}\qr@gf@a
 	\fi\fi
@@ -111,37 +142,30 @@
 % Given n>0, compute (x + alpha^0) * ... * (x + alpha^{n-1}), setting
 % \qr@gen@i to the coefficient of x^i for i in 0, ..., n.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\qrgen[1]{%
-	\csname qr@gen@\number#1\endcsname
-}
+\qr@make@array\qrgen{qr@gen@}
 
 \newcommand*\qrgenpoly[1]{%
 	% x + 1
 	%\csgchardef{qr@gen@1}=\@ne
-	\csgchardef{qr@gen@0}=\@ne
+	\qr@array@set\qrgen\z@\@ne
 	\qr@a=\z@
 	\loop\ifnum#1>\qr@a
 		\qr@b=\qr@a
 		\advance\qr@b\@ne
-		\csgchardef{qr@gen@\number\qr@b}=\@ne
+		\qr@array@set\qrgen\qr@b\@ne
 		\gfantilog\qr@c\qr@a
-		\qr@genpoly@inner
+		{%
+		\loop\ifnum\qr@a>\z@
+			\gfmul\qr@b{\qr@c}{\qrgen\qr@a}%
+			\gfadd\qr@b\qr@b{\qrgen{\qr@a-\@ne}}%
+			\qr@array@set\qrgen{\qr@a}\qr@b
+			\advance\qr@a\m@ne
+		\repeat
+		}%
 		\gfmul\qr@b{\qrgen\z@}\qr@c
-		\csgchardef{qr@gen@0}=\qr@b
+		\qr@array@set\qrgen\z@\qr@b
 		\advance\qr@a\@ne
 	\repeat
-}
-\newcommand*\qr@genpoly@inner{%
-	\begingroup
-	\loop\ifnum\qr@a>\z@
-		\gfmul\qr@b{\qr@c}{\qrgen\qr@a}%
-		\advance\qr@a-1
-		\gfadd\qr@b\qr@b{\qrgen\qr@a}%
-		\advance\qr@a\@ne
-		\csgchardef{qr@gen@\number\qr@a}=\qr@b
-		\advance\qr@a-1
-	\repeat
-	\endgroup
 }
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -149,13 +173,13 @@
 % Polynomial remainder
 %
 % The divisor must be a monic polynomial.
-% \qr@poly@remainder{result}{dividend}[dividenddeg}{divisor}{divisordeg}
+% \qr@poly@remainder\result\dividend{dividenddeg}\divisor{divisordeg}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@poly@remainder[5]{%
 	\begingroup
-	\edef\qr@result{#1}%
-	\edef\qr@dividend{#2}%
-	\edef\qr@divisor{#4}%
+	\let\qr@result#1%
+	\let\qr@dividend#2%
+	\let\qr@divisor#4%
 	% Copy x^{deg(divisor)}dividend to result
 	\qr@a=#3\relax
 	\qr@b=#5\relax
@@ -164,42 +188,46 @@
 	%   result[count@ + deg(divisor)] = dividend[count@]
 	\loop\ifnum\count@>\m@ne
 		\qr@c=\numexpr \count@+\qr@b\relax
-		\csgchardef{\qr@result\number\qr@c}=\csname\qr@dividend\number\count@\endcsname
+		\qr@array@set{\qr@result}{\qr@c}{\qr@dividend{\count@}}%
 		\advance\count@\m@ne
 	\repeat
 	% Set the next deg(divisor) coefficients to 0.
 	\count@=\qr@b
 	\loop\ifnum\count@>\z@
 		\advance\count@\m@ne
-		\csgchardef{\qr@result\number\count@}=\z@
+		\qr@array@set{\qr@result}{\count@}{\z@}%
 	\repeat
+	%\qr@dump@poly\qr@result{\qr@a+\qr@b}%
 	% Perform the division.
-	% for (a=deg(dividend); a > 0; --a)
+	% for (a=deg(dividend); a >= 0; --a)
 	%  c = result[a+deg(divisor)]
 	%  for (b=deg(divisor); b >= 0; --b)
 	%    result[a + b] = result[a + b] (+) c*divisor[b]
-	%  result[a + deg(divisor) = undefined
+	%  result[a + deg(divisor)] = undefined
 	% Since the divisor is monic, when b=deg(divisor), result[a+b]=0 and
 	% really, we're going to undefine result[a+b] anyway, so just scip
 	% that by moving the --b to the beginning of the inner loop and make
 	% the guard >0.
-	\loop\ifnum\qr@a>\z@
+	\loop\ifnum\qr@a>\m@ne
 		% We need to protect the inner loop with braces so the inner
 		% \repeat does not match the outer \loop. This has the side
 		% effect of letting us use \qr@b as a counter since it'll be
 		% restore after the loop.
 		{%
-		\qr@c=\csname\qr@result\number\numexpr\qr@a+\qr@b\relax\endcsname
+		\qr@c=\qr@result{\qr@a+\qr@b}%
+		%\message{Step \number\qr@a\space Lead coefficient = \number\qr@c^^J}%
 		\loop\ifnum\qr@b>\z@
 			\advance\qr@b\m@ne
-			\gfmul\count@\qr@c{\csname\qr@divisor\number\qr@b\endcsname}%
-			\count\z@=\numexpr \qr@a+\qr@b \relax
-			\gfadd\count@\count@{\csname\qr@result\number\count\z@\endcsname}%
-			\csgchardef{\qr@result\number\count\z@}=\count@
+			\gfmul\count@\qr@c{\qr@divisor{\qr@b}}%
+			\gfadd\count@\count@{\qr@result{\qr@a+\qr@b}}%
+			\qr@array@set{\qr@result}{\qr@a+\qr@b}{\count@}%
 		\repeat
 		}
-		\expandafter\let\csname\qr@result\number\numexpr\qr@a+\qr@b\endcsname=\@undefined
+		% Undefine the zeroed coefficient.
+		%\message{Undefining \number\numexpr\qr@a+\qr@b\relax^^J}%
+		\qr@array@unset{\qr@result}{\qr@a+\qr@b}%
 		\advance\qr@a\m@ne
+		%\qr@dump@poly\qr@result{\qr@a+\qr@b}%
 	\repeat
 	\endgroup
 }
@@ -284,56 +312,9 @@
 		\def\qr@mode{alphanum}%
 	\else
 		\def\qr@mode{byte}%
-	\fi\fi\fi
-}
-
-\newcommand*\qr@select@version@numeric@mode{%
-}
-
-\newcommand*\qr@select@version@alphanum@mode{%
-}
-
-\newcommand*\qr@select@version@byte@mode{%
-	\qr@v 40 2954 2332 1664 1274.%
-	\qr@v 39 2810 2214 1580 1220.%
-	\qr@v 38 2700 2100 1500 1140.%
-	\qr@v 37 2564 1990 1424 1094.%
-	\qr@v 36 2432 1912 1352 1052.%
-	\qr@v 35 2304 1810 1284 984.%
-	\qr@v 34 2189 1723 1229 959.%
-	\qr@v 33 2069 1629 1169 899.%
-	\qr@v 32 1953 1539 1113 843.%
-	\qr@v 31 1841 1453 1031 791.%
-	\qr@v 30 1733 1371 983 743.%
-	\qr@v 29 1629 1265 909 699.%
-	\qr@v 28 1529 1191 869 659.%
-	\qr@v 27 1466 1126 806 626.%
-	\qr@v 26 1368 1060 752 594.%
-	\qr@v 25 1274 998 716 536.%
-	\qr@v 24 1172 912 662 512.%
-	\qr@v 23 1092 858 612 462.%
-	\qr@v 22 1004 780 566 440.%
-	\qr@v 21 930 712 510 404.%
-	\qr@v 20 859 667 483 383.%
-	\qr@v 19 793 625 443 339.%
-	\qr@v 18 719 561 395 311.%
-	\qr@v 17 645 505 365 281.%
-	\qr@v 16 587 451 323 251.%
-	\qr@v 15 521 413 293 221.%
-	\qr@v 14 459 363 259 195.%
-	\qr@v 13 426 332 242 178.%
-	\qr@v 12 368 288 204 156.%
-	\qr@v 11 322 252 178 138.%
-	\qr@v 10 272 214 152 120.%
-	\qr@v 9 231 181 131 99.%
-	\qr@v 8 193 153 109 85.%
-	\qr@v 7 155 123 87 65.%
-	\qr@v 6 135 107 75 59.%
-	\qr@v 5 107 85 61 45.%
-	\qr@v 4 79 63 47 35.%
-	\qr@v 3 54 43 33 25.%
-	\qr@v 2 33 27 21 15.%
-	\qr@v 1 18 15 12 8.%
+	\fi\fi
+	\message{String length: \number\qr@len^^J}%
+	\message{QR mode: \qr@mode^^J}%
 }
 
 \newcommand*\qr@set@parameters{%
@@ -361,7 +342,7 @@
 	\fi\fi\fi\fi
 	\chardef\qr@ver=\z@
 	% Pick the appropriate version for the mode.
-	\csname\qr@select@version@\qr@mode @mode\endcsname
+	\csname qr@select@version@\qr@mode @mode\endcsname
 	\ifnum\qr@ver=\z@
 		\PackageError{qr}{String is too long for given error
 			correction level}{}%
@@ -374,7 +355,7 @@
 		\chardef\qr@blks@per@groupi=##3\relax
 		\chardef\qr@words@per@blki=##4\relax
 	}%
-	\message{\number\qr@ver}%
+	\message{QR version: \number\qr@ver-\qr@ecl^^J}%
 	\ifcase\qr@ver
 	\or\qr@v{19 7 1 19}{16 10 1 16}{13 13 1 13}{9 17 1 9}% 1
 	\or\qr@v{34 10 1 34}{28 16 1 28}{22 22 1 22}{16 28 1 16}% 2
@@ -417,16 +398,16 @@
 	\or\qr@v{2812 30 20 117}{2216 28 40 47}{1582 30 43 24}{1222 30 10 15}% 39
 	\or\qr@v{2956 30 19 118}{2334 28 18 47}{1666 30 34 24}{1276 30 20 15}% 40
 	\fi
+	% Compute the group 2 parameters.
 	\qr@a=\numexpr \qr@total@data@words-\qr@blks@per@groupi*\qr@words@per@blki \relax
 	\ifnum\qr@a>\z@
-		\chardef\qr@blks@per@groupii=\numexpr \qr@blks@per@groupi+\@ne\relax
-		\divide\qr@a\qr@blks@per@groupii
-		\chardef\qr@words@per@blkii=\qr@a
+		\chardef\qr@words@per@blkii=\numexpr\qr@words@per@blki+\@ne\relax
+		\divide\qr@a\qr@words@per@blkii
+		\chardef\qr@blks@per@groupii=\qr@a
 	\else
 		\chardef\qr@blks@per@groupii=\z@
 		\chardef\qr@words@per@blkii=\z@
 	\fi
-	\dbg\qr@ver
 	\dbg\qr@total@data@words
 	\dbg\qr@ecc@codewords
 	\dbg\qr@blks@per@groupi
@@ -438,11 +419,11 @@
 \newcommand*\dbg[1]{\message{\string#1=\number#1^^J}}
 
 \def\qr@reset@data@ptr{%
-	\chardef\qr@grp=\@ne
-	\chardef\qr@blk=\z@
-	\qr@idx=\z@
-	\chardef\qr@blks@per@group=\qr@blks@per@groupi
-	\chardef\qr@words@per@blk=\qr@words@per@blki
+	\global\chardef\qr@grp=\@ne
+	\global\chardef\qr@blk=\z@
+	\global\qr@idx=\z@
+	\global\chardef\qr@blks@per@group=\qr@blks@per@groupi
+	\global\chardef\qr@words@per@blk=\qr@words@per@blki
 }
 
 \def\qr@advance@data@ptr{%
@@ -450,29 +431,29 @@
 		\PackageError{qr}{Internal error
 			\string\qr@advance@data@ptr}{}
 	\fi
-	\advance\qr@idx\@ne
+	\global\advance\qr@idx\@ne
 	\ifnum\qr@idx=\qr@words@per@blk
 		% Move to next block.
-		\qr@idx=\z@
+		\global\qr@idx=\z@
 		\count@=\numexpr\qr@blk+\@ne\relax
-		\chardef\qr@blk=\count@
+		\global\chardef\qr@blk=\count@
 		\ifnum\qr@blk=\qr@blks@per@group
 			% Move to next group.
-			\chardef\qr@blk=\z@
+			\global\chardef\qr@blk=\z@
 			\ifnum\qr@grp=\@ne
 				\ifnum\qr@words@per@blkii>\z@
-					\chardef\qr@grp=\tw@
-					\chardef\qr@blks@per@group=\qr@blks@per@groupii
-					\chardef\qr@words@per@blk=\qr@words@per@blkii
+					\global\chardef\qr@grp=\tw@
+					\global\chardef\qr@blks@per@group=\qr@blks@per@groupii
+					\global\chardef\qr@words@per@blk=\qr@words@per@blkii
 				\else
-					\chardef\qr@grp=\thr@@
-					\chardef\qr@words@per@blk=\z@
-					\chardef\qr@blks@per@group=\z@
+					\global\chardef\qr@grp=\thr@@
+					\global\chardef\qr@words@per@blk=\z@
+					\global\chardef\qr@blks@per@group=\z@
 				\fi
 			\else
-				\chardef\qr@grp=\thr@@
-				\chardef\qr@words@per@blk=\z@
-				\chardef\qr@blks@per@group=\z@
+				\global\chardef\qr@grp=\thr@@
+				\global\chardef\qr@words@per@blk=\z@
+				\global\chardef\qr@blks@per@group=\z@
 			\fi
 		\fi
 	\fi
@@ -484,58 +465,171 @@
 	\qr@advance@data@ptr
 }
 
-% Byte mode
-\newcommand*\qr@encode@byte{%
-	%\message{\number\qr@a\space\number\qr@b^^J}%
-	% c = b / 16
-	\qr@c=\qr@b
-	\divide\qr@c\sixt@@n
-	% append(a + c)
-	\qr@append@word{\numexpr \qr@a+\qr@c\relax}%
-	% a = b - c*16
-	\qr@a=\numexpr \qr@b-\qr@c*\sixt@@n\relax
-	% a = a*16
-	\multiply\qr@a\sixt@@n
+\newcommand*\qr@pow[1]{%
+	\ifcase\numexpr#1\relax\@ne
+	\or\tw@
+	\or4
+	\or8
+	\or\sixt@@n
+	\or32
+	\or64
+	\or128
+	\or\@cclvi
+	\or512
+	\or1024
+	\or2048
+	\or4096
+	\or8192
+	\or16384
+	\or32768
+	\or65536
+	\else\PackageError{qr}{Power too large}{}%
+	\fi
 }
 
-\newcommand*\qr@encode@bytes{%
-	\qr@a="80 % byte mode
+\def\qr@encode@bits@store{%
+	\ifnum\qr@c>7
+		\qr@b=\qr@a
+		\divide\qr@b\qr@pow{\qr@c-8}%
+		\qr@append@word\qr@b
+		\qr@a=\numexpr\qr@a-\qr@pow{\qr@c-8}*\qr@b\relax
+		\advance\qr@c-8
+		\expandafter\qr@encode@bits@store
+	\fi
+}
+
+\newcommand*\qr@encode@bits[1]{%
+	% a = (a << bits) + b
+	\qr@a=\numexpr\qr@a*\qr@pow{#1}+\qr@b\relax
+	\advance\qr@gf@a#1\relax
+	\advance\qr@c#1\relax
+	\qr@encode@bits@store
+	\qr@b=\z@
+}
+
+\newcommand*\qr@encode@numeric@mode{%
+	\qr@b=\@ne % Numeric mode.
+	\qr@encode@bits{4}%
+	% Add number count.
+	\qr@b=\qr@len
 	\ifnum\qr@ver<10
-		% 8 bits of character count
-		\qr@b=\qr@len
-		\qr@encode@byte
+		\qr@encode@bits{10}%
+	\else\ifnum\qr@ver<27
+		\qr@encode@bits{12}%
 	\else
-		% 16 bits of character count
-		\qr@b=\numexpr\qr@len/\@cclvi\relax
-		\qr@encode@byte
-		\qr@b=\qr@len
-		\qr@c=\qr@b
-		\divide\qr@c \@cclvi
-		\multiply\qr@c \@cclvi
-		\advance\qr@b -\qr@c
-		\qr@encode@byte
+		\qr@encode@bits{14}%
+	\fi\fi
+	% Encode numbers three at a time.
+	\count@=\z@
+	\qr@foreach@token{%
+		\qr@b=\numexpr10*\qr@b+\qr@token\relax
+		\advance\count@\@ne
+		\ifnum\count@=\thr@@
+			\qr@encode@bits{10}%
+			\count@=\z@
+		\fi
+	}%
+	% Encode any remaining numbers.
+	\ifcase\count@
+	\or\qr@encode@bits{4}%
+	\or\qr@encode@bits{7}%
+	\fi
+}
+
+\newcommand*\qr@encode@alphanum@mode{%
+	%\traceon
+	\qr@b=\tw@ % Alphanumeric mode.
+	\qr@encode@bits{4}%
+	% Add character count.
+	\qr@b=\qr@len
+	\ifnum\qr@ver<10
+		\qr@encode@bits{9}%
+	\else\ifnum\qr@ver<27
+		\qr@encode@bits{11}%
+	\else
+		\qr@encode@bits{13}%
+	\fi\fi
+	% Encode characters two at a time.
+	\count@=\z@
+	\qr@foreach@token{%
+		\qr@gf@b=\expandafter`\qr@token
+		\qr@check@range\qr@gf@b{`0}{`9}%
+		\multiply\qr@b45
+		\ifqr@inrange
+			\advance\qr@b\qr@token\relax
+		\else
+			\qr@check@range\qr@gf@b{`A}{`Z}%
+			\ifqr@inrange\advance\qr@b\numexpr\qr@gf@b-55\relax
+			\else\ifnum\qr@gf@b=`\ \advance\qr@b36
+			\else\ifnum\qr@gf@b=`\$\advance\qr@b37
+			\else\ifnum\qr@gf@b=`\%\advance\qr@b38
+			\else\ifnum\qr@gf@b=`\*\advance\qr@b39
+			\else\ifnum\qr@gf@b=`\+\advance\qr@b40
+			\else\ifnum\qr@gf@b=`\-\advance\qr@b41
+			\else\ifnum\qr@gf@b=`\.\advance\qr@b42
+			\else\ifnum\qr@gf@b=`\/\advance\qr@b43
+			\else                  \advance\qr@b44 % colon
+			\fi\fi\fi\fi\fi\fi\fi\fi\fi
+		\fi
+		\advance\count@\@ne
+		\ifnum\count@=\tw@
+			\qr@encode@bits{11}%
+			\count@=\z@
+		\fi
+	}%
+	% Encode the final character, if length is odd.
+	\ifnum\count@=\@ne
+		\qr@encode@bits{6}%
+	\fi
+	%\traceoff
+}
+
+\newcommand*\qr@encode@byte@mode{%
+	\qr@b=4 % Byte mode.
+	\qr@encode@bits{4}%
+	% Encode character count.
+	\qr@b=\qr@len
+	\ifnum\qr@ver<10
+		\qr@encode@bits{8}%
+	\else
+		\qr@encode@bits{16}%
 	\fi
 	% Encode bytes.
 	\qr@foreach@token{%
+		% Get the ASCII value.
 		\qr@b=\expandafter`\qr@token
-		\qr@encode@byte
+		\qr@encode@bits{8}%
 	}%
-	% Add terminator 0s, 4 bits are necessary.
-	\qr@b=\z@
-	\qr@encode@byte
 }
 
-\newcommand*\qr@add@padding{%
-	% Number of words encoded so far.
-	\ifcase\qr@grp \PackageError{qr}{Internal padding error}{}%
-	\or \qr@b=\numexpr \qr@blk*\qr@words@per@blki +\qr@idx\relax
-	\or \qr@b=\numexpr \qr@blks@per@groupi*\qr@words@per@blki +%
-		\qr@blk*\qr@words@per@blkii +\qr@idx\relax
-	\or \qr@b=\qr@a
-	\else \PackageError{qr}{Internal padding error 2}{}%
+\newcommand*\qr@encode@str{%
+	% Encode the string based on the mode.
+	% Use \qr@gf@a as number of bits encoded, \qr@a to hold bits encoded
+	% but not stored, and \qr@c as the number of encoded but not stored
+	% bits.
+	\qr@gf@a=\z@
+	\qr@a=\z@
+	\qr@c=\z@
+	\csname qr@encode@\qr@mode @mode\endcsname
+	% Compute number of bits remaining.
+	\count@=\numexpr8*\qr@total@data@words-\qr@gf@a\relax
+	% Encode min(4,count@) 0 bits.
+	\qr@b=\z@
+	\ifnum\count@>4
+		\qr@encode@bits{4}%
+	\else
+		\qr@encode@bits\count@
 	\fi
-	% Number of words of padding.
-	\qr@a=\numexpr\qr@total@data@words-\qr@b\relax
+	% Encode enough bits to get to a multiple of 8.
+	\ifnum\qr@c>\z@
+		\count@=\numexpr8-\qr@c\relax
+		\qr@encode@bits\count@
+	\fi
+	% Now add padding words.
+	% Number of words of padding (we can use eTeX's rounding division
+	% because qr@gf@a is a multiple of 8 due to the final zero encodings
+	% above).
+	\qr@a=\numexpr\qr@total@data@words-\qr@gf@a/8\relax
 	% Append 236 and 17 until the full size has been reached.
 	\loop\ifnum\qr@a>\@ne
 		\qr@append@word{236}%
@@ -547,27 +641,59 @@
 	\fi
 }
 
+\newcommand\qr@dump@array[2]{%
+	\begingroup
+	\edef\qr@arr{#1}%
+	\message{Dumping array \qr@arr:^^J}%
+	\qr@b=#2\relax
+	\qr@a=\z@
+	\loop\ifnum\qr@a<\qr@b
+		\message{\qr@arr\number\qr@a=\number\csname\qr@arr\number\qr@a\endcsname^^J}%
+		\advance\qr@a\@ne
+	\repeat
+	\endgroup
+}
+
+\newcommand*\qr@dump@poly[2]{%
+	\begingroup
+	\qr@a=\numexpr#2\relax
+	\message{\string#1=(}%
+	\loop\ifnum\qr@a>\z@
+		\message{\number#1{\qr@a}, }%
+		\advance\qr@a\m@ne
+	\repeat
+	\message{\number#1{\z@})^^J}%
+	\endgroup
+}
+
 \newcommand*\qr@compute@ecc{%
 	% Construct the generator polynomial.
 	\qrgenpoly\qr@ecc@codewords
 	% Compute the ECC for each block in group 1.
-	\qr@a=\z@
+	% b = degree of msg polynomial
 	\qr@b=\numexpr\qr@words@per@blki-\@ne\relax
+	\qr@a=\z@
 	\loop\ifnum\qr@a<\qr@blks@per@groupi
+		\qr@polynomial@view\qr@result{qr@ecc@1.\number\qr@a.}{\qr@ecc@codewords-\@ne}%
+		\qr@polynomial@view\qr@divisor{qr@msg@1.\number\qr@a.}\qr@b
 		\qr@poly@remainder
-			{qr@ecc@1.\number\qr@a.}%
-			{qr@msg@1.\number\qr@a.}\qr@b
-			{qr@gen@}\qr@ecc@codewords
+			\qr@result
+			\qr@divisor\qr@b
+			\qrgen\qr@ecc@codewords
+		\qr@dump@array{qr@ecc@1.\number\qr@a.}\qr@ecc@codewords
 		\advance\qr@a\@ne
 	\repeat
 	% Compute the ECC for each block in group 2.
 	\qr@a=\z@
 	\qr@b=\numexpr\qr@words@per@blkii-\@ne\relax
 	\loop\ifnum\qr@a<\qr@blks@per@groupii
+		\qr@polynomial@view\qr@result{qr@ecc@2.\number\qr@a.}{\qr@ecc@codewords-\@ne}%
+		\qr@polynomial@view\qr@divisor{qr@msg@2.\number\qr@a.}\qr@b
 		\qr@poly@remainder
-			{qr@ecc@2.\number\qr@a.}%
-			{qr@msg@2.\number\qr@a.}\qr@b
-			{qr@gen@}\qr@ecc@codewords
+			\qr@result
+			\qr@divisor\qr@b
+			\qrgen\qr@ecc@codewords
+		\qr@dump@array{qr@ecc@2.\number\qr@a.}\qr@ecc@codewords
 		\advance\qr@a\@ne
 	\repeat
 }
@@ -579,9 +705,7 @@
 	\edef\qr@str{\detokenize{#3}}%
 	\qr@analyze@str
 	\qr@set@parameters
-	\qr@encode@bytes
-	\let\qr@str\relax
-	\qr@add@padding
+	\qr@encode@str
 	\qrdumpdata
 	\qr@compute@ecc
 	%\qr@interleave
@@ -594,5 +718,135 @@
 		\qr@advance@data@ptr
 		\
 	\repeat
+}
+
+% Table-generated code.
+\def\qr@select@version@numeric@mode{%
+	\qr@v 40 7090 5597 3994 3058.%
+	\qr@v 39 6744 5314 3792 2928.%
+	\qr@v 38 6480 5040 3600 2736.%
+	\qr@v 37 6154 4776 3418 2626.%
+	\qr@v 36 5837 4589 3245 2525.%
+	\qr@v 35 5530 4344 3082 2362.%
+	\qr@v 34 5254 4135 2950 2302.%
+	\qr@v 33 4966 3910 2806 2158.%
+	\qr@v 32 4687 3694 2671 2023.%
+	\qr@v 31 4418 3487 2474 1898.%
+	\qr@v 30 4159 3290 2359 1783.%
+	\qr@v 29 3910 3036 2182 1678.%
+	\qr@v 28 3670 2858 2086 1582.%
+	\qr@v 27 3518 2702 1934 1502.%
+	\qr@v 26 3284 2545 1805 1426.%
+	\qr@v 25 3058 2396 1719 1287.%
+	\qr@v 24 2813 2189 1589 1229.%
+	\qr@v 23 2621 2060 1469 1109.%
+	\qr@v 22 2410 1873 1359 1057.%
+	\qr@v 21 2233 1709 1225 970.%
+	\qr@v 20 2062 1601 1160 920.%
+	\qr@v 19 1904 1501 1064 814.%
+	\qr@v 18 1726 1347 949 747.%
+	\qr@v 17 1549 1213 877 675.%
+	\qr@v 16 1409 1083 776 603.%
+	\qr@v 15 1251 992 704 531.%
+	\qr@v 14 1102 872 622 469.%
+	\qr@v 13 1023 797 581 428.%
+	\qr@v 12 884 692 490 375.%
+	\qr@v 11 773 605 428 332.%
+	\qr@v 10 653 514 365 289.%
+	\qr@v 9 553 433 313 236.%
+	\qr@v 8 462 366 260 203.%
+	\qr@v 7 371 294 208 155.%
+	\qr@v 6 323 256 179 140.%
+	\qr@v 5 256 203 145 107.%
+	\qr@v 4 188 150 112 83.%
+	\qr@v 3 128 102 78 59.%
+	\qr@v 2 78 64 49 35.%
+	\qr@v 1 42 35 28 18.%
+}
+
+\def\qr@select@version@alphanum@mode{%
+	\qr@v 40 4297 3392 2421 1853.%
+	\qr@v 39 4088 3221 2299 1775.%
+	\qr@v 38 3928 3055 2182 1659.%
+	\qr@v 37 3730 2895 2072 1592.%
+	\qr@v 36 3538 2781 1967 1531.%
+	\qr@v 35 3352 2633 1868 1432.%
+	\qr@v 34 3184 2507 1788 1395.%
+	\qr@v 33 3010 2370 1701 1308.%
+	\qr@v 32 2841 2239 1619 1227.%
+	\qr@v 31 2678 2114 1500 1151.%
+	\qr@v 30 2521 1995 1430 1081.%
+	\qr@v 29 2370 1840 1323 1017.%
+	\qr@v 28 2224 1733 1264 959.%
+	\qr@v 27 2133 1638 1173 911.%
+	\qr@v 26 1991 1543 1095 865.%
+	\qr@v 25 1854 1452 1042 780.%
+	\qr@v 24 1705 1327 964 745.%
+	\qr@v 23 1589 1249 891 673.%
+	\qr@v 22 1461 1135 824 641.%
+	\qr@v 21 1353 1036 743 588.%
+	\qr@v 20 1250 971 703 558.%
+	\qr@v 19 1154 910 645 494.%
+	\qr@v 18 1047 817 575 453.%
+	\qr@v 17 939 735 532 409.%
+	\qr@v 16 855 657 471 366.%
+	\qr@v 15 759 601 427 322.%
+	\qr@v 14 668 529 377 284.%
+	\qr@v 13 620 484 353 260.%
+	\qr@v 12 536 420 297 228.%
+	\qr@v 11 469 367 260 201.%
+	\qr@v 10 396 312 222 175.%
+	\qr@v 9 336 263 190 144.%
+	\qr@v 8 280 222 158 123.%
+	\qr@v 7 225 179 126 94.%
+	\qr@v 6 196 155 109 85.%
+	\qr@v 5 155 123 88 65.%
+	\qr@v 4 115 91 68 51.%
+	\qr@v 3 78 62 48 36.%
+	\qr@v 2 48 39 30 21.%
+	\qr@v 1 26 21 17 11.%
+}
+
+\def\qr@select@version@byte@mode{%
+	\qr@v 40 2954 2332 1664 1274.%
+	\qr@v 39 2810 2214 1580 1220.%
+	\qr@v 38 2700 2100 1500 1140.%
+	\qr@v 37 2564 1990 1424 1094.%
+	\qr@v 36 2432 1912 1352 1052.%
+	\qr@v 35 2304 1810 1284 984.%
+	\qr@v 34 2189 1723 1229 959.%
+	\qr@v 33 2069 1629 1169 899.%
+	\qr@v 32 1953 1539 1113 843.%
+	\qr@v 31 1841 1453 1031 791.%
+	\qr@v 30 1733 1371 983 743.%
+	\qr@v 29 1629 1265 909 699.%
+	\qr@v 28 1529 1191 869 659.%
+	\qr@v 27 1466 1126 806 626.%
+	\qr@v 26 1368 1060 752 594.%
+	\qr@v 25 1274 998 716 536.%
+	\qr@v 24 1172 912 662 512.%
+	\qr@v 23 1092 858 612 462.%
+	\qr@v 22 1004 780 566 440.%
+	\qr@v 21 930 712 510 404.%
+	\qr@v 20 859 667 483 383.%
+	\qr@v 19 793 625 443 339.%
+	\qr@v 18 719 561 395 311.%
+	\qr@v 17 645 505 365 281.%
+	\qr@v 16 587 451 323 251.%
+	\qr@v 15 521 413 293 221.%
+	\qr@v 14 459 363 259 195.%
+	\qr@v 13 426 332 242 178.%
+	\qr@v 12 368 288 204 156.%
+	\qr@v 11 322 252 178 138.%
+	\qr@v 10 272 214 152 120.%
+	\qr@v 9 231 181 131 99.%
+	\qr@v 8 193 153 109 85.%
+	\qr@v 7 155 123 87 65.%
+	\qr@v 6 135 107 75 59.%
+	\qr@v 5 107 85 61 45.%
+	\qr@v 4 79 63 47 35.%
+	\qr@v 3 54 43 33 25.%
+	\qr@v 2 33 27 21 15.%
+	\qr@v 1 18 15 12 8.%
 }
 

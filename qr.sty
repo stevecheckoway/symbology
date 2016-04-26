@@ -17,32 +17,60 @@
 \newcount\qr@idx
 \newif\ifqr@inrange
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Global \chardef of a control sequence.
+%
+% \csgchardef{foo}=5 is the same as \global\chardef\foo=5.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\csgchardef[1]{%
 	\expandafter\global\expandafter\chardef\csname#1\endcsname
 }
 
-\newcommand*\qr@array@set[3]{%
-	\global
-	\expandafter\expandafter\expandafter
-	\chardef#1{#2}=\numexpr#3\relax
-}
-
-\newcommand*\qr@array@unset[2]{%
-	\global
-	\expandafter\expandafter\expandafter
-	\let#1{#2}=\@undefined
-}
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Global octet arrays.
+%
+% \qr@make@array\foo{bar@} defines an array accessor \foo such that
+% \foo{idx} expands to \bar@idx where idx is expanded as a number using eTeX's
+% \numexpr ... \relax construct.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@make@array[2]{%
 	\edef#1##1{%
 		\noexpand\csname#2\noexpand\number\noexpand\numexpr##1\relax\noexpand\endcsname
 	}%
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Array setter.
+%
+% \qr@array@set\foo{idx}{value} expands idx and value as numbers using eTeX's
+% \numexpr ... \relax construct and then globally sets \foo{idx} to value.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@array@set[3]{%
+	\global
+	\expandafter\expandafter\expandafter
+	\chardef#1{#2}=\numexpr#3\relax
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Array unsetter.
+%
+% \qr@array@unset\foo{idx} undefines \foo{idx}, freeing it from TeX's memory.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@array@unset[2]{%
+	\global
+	\expandafter\expandafter\expandafter
+	\let#1{#2}=\@undefined
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Polynomial view of an array.
+%
 % View an array as a deg-degree polynomial.
 % E.g., view a[0], a[1], ..., a[deg] as
 % a[0]x^{deg} + a[1]x^{deg-1} + ... + a[deg-1]
 % \qr@polynomial@view\poly{array}{deg}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@polynomial@view[3]{%
 	\edef#1##1{%
 		\noexpand\csname#2\noexpand\number\noexpand\numexpr
@@ -51,14 +79,14 @@
 	}%
 }
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Implement the GF(256) arithmetic
 %
 % \gfadd{r}{a}{b}  sets r = a + b
 % \gfmul{r}{a}{b}  sets r = a * b
 % \gflog{r}{a}     sets r = log_alpha a
 % \gfantilog{r}{a} sets r = alpha^a
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \newcommand*\qr@xor@bit{%
 	\ifodd\qr@gf@a
@@ -101,11 +129,11 @@
 	% qr@b <- qr@b*2
 	\advance\qr@b\qr@b
 	% if qr@b > 255 then qr@b <- qr@b (+) 285
-	\ifnum\qr@b>255
-		\advance\qr@b-256
+	\ifnum\qr@b>\@cclv
+		\advance\qr@b-\@cclvi
 		\gfadd\qr@b\qr@b{29}%
 	\fi
-\ifnum\qr@a<255\repeat
+\ifnum\qr@a<\@cclv\repeat
 \csgchardef{gf@antilog@255}=\@ne
 
 \newcommand*\gflog[2]{%
@@ -133,20 +161,17 @@
 		\gfantilog{#1}\qr@gf@a
 	\fi\fi
 }
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Generator polynomials
 %
 % Given n>0, compute (x + alpha^0) * ... * (x + alpha^{n-1}), setting
 % \qr@gen@i to the coefficient of x^i for i in 0, ..., n.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \qr@make@array\qrgen{qr@gen@}
 
 \newcommand*\qrgenpoly[1]{%
 	% x + 1
-	%\csgchardef{qr@gen@1}=\@ne
 	\qr@array@set\qrgen\z@\@ne
 	\qr@a=\z@
 	\loop\ifnum#1>\qr@a
@@ -167,14 +192,13 @@
 		\advance\qr@a\@ne
 	\repeat
 }
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Polynomial remainder
 %
 % The divisor must be a monic polynomial.
 % \qr@poly@remainder\result\dividend{dividenddeg}\divisor{divisordeg}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@poly@remainder[5]{%
 	\begingroup
 	\let\qr@result#1%
@@ -232,9 +256,12 @@
 	\endgroup
 }
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Iterate over the QR message
+%
 % Iterate over each token in \qr@str and expand #1 with \qr@token set to the
 % token.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@foreach@token[1]{%
 	\def\qr@foreach@v{#1}%
 	\expandafter\futurelet\expandafter\qr@token\expandafter\qr@foreach\qr@str\qr@foreach
@@ -269,6 +296,12 @@
 }
 \endgroup
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Check if a value is in range
+%
+% \qr@check@range{x}{begin}{end} sets the \ifqr@inrange conditional to true if
+% begin <= x <= end.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@check@range[3]{%
 	\qr@inrangefalse
 	\ifnum#1>#3\else
@@ -278,6 +311,12 @@
 	\fi
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Analyze the QR message
+%
+% Computes the length of the message and the minimum mode required to encode
+% the message. Sets \qr@len and \qr@mode.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@analyze@str{%
 	\qr@len=\z@
 	\qr@a=\@ne % Numeric.
@@ -317,11 +356,19 @@
 	\message{QR mode: \qr@mode^^J}%
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Set the QR parameters.
+%
+% Sets the QR version (which controls the number of "modules" per row and
+% column) as well as internal parameters:
+%   \qr@total@data@words  total number of data codewords
+%   \qr@ecc@codewords     number of ECC codewords per block
+%   \qr@blks@per@groupi   number of blocks in group 1
+%   \qr@words@per@blki    number of data codwords per block in group 1
+%   \qr@blks@per@groupii  number of blocks in group 2
+%   \qr@blks@per@groupii  number of data codewords per block in group 2
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@set@parameters{%
-	% Compute the length of the string
-	\qr@len=\z@
-	\qr@foreach@token{\advance\qr@len\@ne}
-	%
 	% Based on the error correction and length, pick the smallest QR
 	% version for byte mode.
 	\if L\qr@ecl
@@ -418,6 +465,28 @@
 }
 \newcommand*\dbg[1]{\message{\string#1=\number#1^^J}}
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% QR message encoding
+%
+% The QR message is encoded based on the mode and length as a string of bits
+% (including padding bits) and then broken into 8-bit codewords (and padding
+% codewords are appended to the total size). The codewords are then broken
+% into blocks and groups.
+%
+% Any given (data) codeword can be referenced by a triple (group, block,
+% index). We maintain a pointer to the next codeword to be encoded by keeping
+% track of \qr@grp, \qr@blk, and \qr@idx as well as some additional
+% bookkeeping \qr@blks@per@group and \qr@words@per@blk as those values are
+% dependant on \qr@grp.
+%
+% \qr@grp is set to 3 once the pointer has advanced through all (data)
+% codewords.
+%
+% The error correction codewords are computed based on each block so a similar
+% pointer isn't as useful.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Reset the data pointer.
 \def\qr@reset@data@ptr{%
 	\global\chardef\qr@grp=\@ne
 	\global\chardef\qr@blk=\z@
@@ -426,6 +495,8 @@
 	\global\chardef\qr@words@per@blk=\qr@words@per@blki
 }
 
+% Advance the data pointer by 1, updating all components of the triple as
+% necessary.
 \def\qr@advance@data@ptr{%
 	\ifnum\qr@grp=\thr@@
 		\PackageError{qr}{Internal error
@@ -459,19 +530,21 @@
 	\fi
 }
 
+% Write the codeword at the current pointer and increment the pointer.
 \newcommand*\qr@append@word[1]{%
 	\message{\number\qr@grp.\number\qr@blk.\number\qr@idx=\number#1^^J}%
 	\csgchardef{qr@msg@\number\qr@grp.\number\qr@blk.\number\qr@idx}=#1\relax
 	\qr@advance@data@ptr
 }
 
+% \qr@pow{x} is expandable to 2^x for x in 0, 1, ..., 16.
 \newcommand*\qr@pow[1]{%
 	\ifcase\numexpr#1\relax\@ne
 	\or\tw@
 	\or4
 	\or8
 	\or\sixt@@n
-	\or32
+	\or\@xxxii
 	\or64
 	\or128
 	\or\@cclvi
@@ -487,6 +560,31 @@
 	\fi
 }
 
+% QR messages are encoded as bits. The encoding depends on the mode and each
+% mode produces differt numbers of bits at a time. The interface to the
+% low-level encoding is \qr@encode@bits. Once more than 8 bits have been
+% encoded, they are stored as the next code word using \qr@append@word.
+%
+% The API for this is pretty hackish. Three count registers are used for the
+% process and cannot be used for anything else while encoding is happening.
+%   #1        The number of bits to encode.
+%   \qr@a     Holds the bits that have been encoded, but not stored.
+%   \qr@b     On input, the bits to encode; set to 0 at the end.
+%   \qr@c     The number of bits encoded (in \qr@a) but not stored.
+%   \qr@gf@a  The total number of bits encoded.
+% \qr@b can be used as desired before and after \qr@encode@bits (but must be
+% set to the appropriate value to encode before, of course) but the other
+% three must not be used (or restored if used).
+\newcommand*\qr@encode@bits[1]{%
+	% a = (a << bits) + b
+	\qr@a=\numexpr\qr@a*\qr@pow{#1}+\qr@b\relax
+	\advance\qr@gf@a#1\relax
+	\advance\qr@c#1\relax
+	\qr@encode@bits@store
+	\qr@b=\z@
+}
+
+% While \qr@c >= 8, store a codeword.
 \def\qr@encode@bits@store{%
 	\ifnum\qr@c>7
 		\qr@b=\qr@a
@@ -498,15 +596,7 @@
 	\fi
 }
 
-\newcommand*\qr@encode@bits[1]{%
-	% a = (a << bits) + b
-	\qr@a=\numexpr\qr@a*\qr@pow{#1}+\qr@b\relax
-	\advance\qr@gf@a#1\relax
-	\advance\qr@c#1\relax
-	\qr@encode@bits@store
-	\qr@b=\z@
-}
-
+% Encode the numeric mode.
 \newcommand*\qr@encode@numeric@mode{%
 	\qr@b=\@ne % Numeric mode.
 	\qr@encode@bits{4}%
@@ -536,8 +626,8 @@
 	\fi
 }
 
+% Encode the (misnamed) alphanumeric mode.
 \newcommand*\qr@encode@alphanum@mode{%
-	%\traceon
 	\qr@b=\tw@ % Alphanumeric mode.
 	\qr@encode@bits{4}%
 	% Add character count.
@@ -581,9 +671,9 @@
 	\ifnum\count@=\@ne
 		\qr@encode@bits{6}%
 	\fi
-	%\traceoff
 }
 
+% Encode byte mode.
 \newcommand*\qr@encode@byte@mode{%
 	\qr@b=4 % Byte mode.
 	\qr@encode@bits{4}%
@@ -602,14 +692,15 @@
 	}%
 }
 
+% Encode the QR message based on the mode. \qr@a, \qr@b, \qr@c, and \qr@gf@a
+% are used as described above. Up to four padding bits are added, then
+% additional padding bits are added to bring the total up to a multiple of 8.
+% Finally, add padding codewords (alternating 236 and 17).
 \newcommand*\qr@encode@str{%
+	\qr@gf@a=\z@ % Total bits encoded.
+	\qr@a=\z@    % Encoded but not stored bits.
+	\qr@c=\z@    % Number of bits encoded (in \qr@a) but not stored.
 	% Encode the string based on the mode.
-	% Use \qr@gf@a as number of bits encoded, \qr@a to hold bits encoded
-	% but not stored, and \qr@c as the number of encoded but not stored
-	% bits.
-	\qr@gf@a=\z@
-	\qr@a=\z@
-	\qr@c=\z@
 	\csname qr@encode@\qr@mode @mode\endcsname
 	% Compute number of bits remaining.
 	\count@=\numexpr8*\qr@total@data@words-\qr@gf@a\relax
@@ -641,6 +732,7 @@
 	\fi
 }
 
+% Debugging.
 \newcommand\qr@dump@array[2]{%
 	\begingroup
 	\edef\qr@arr{#1}%
@@ -654,6 +746,7 @@
 	\endgroup
 }
 
+% Debugging.
 \newcommand*\qr@dump@poly[2]{%
 	\begingroup
 	\qr@a=\numexpr#2\relax
@@ -666,6 +759,14 @@
 	\endgroup
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Compute error correcting code
+%
+% Compute the Reed--Solomon error correcting code for each block. Simply treat
+% each block as the coefficients of a polynomial (using \qr@polynomial@view)
+% and compute the polynomial remainder of division by the generator polynomial
+% over GF(256).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@compute@ecc{%
 	% Construct the generator polynomial.
 	\qrgenpoly\qr@ecc@codewords
@@ -698,7 +799,7 @@
 	\repeat
 }
 
-% \qrcode[compression]{width}{str}
+% \qrcode[errorcorrection]{width}{str}
 \newcommand\qrcode[3][Q]{%
 	\edef\qr@ecl{#1}%
 	\setlength\qr@width{#2}%
@@ -720,7 +821,14 @@
 	\repeat
 }
 
-% Table-generated code.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Table-generated code for QR version
+%
+% Select the minimal QR version for the mode based on the error correction
+% level. \qr@v is defined to compare \qr@len to the appropriate parameter
+% (based on the correction level) and if \qr@len is smaller, set \qr@ver to
+% the first parameter.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \def\qr@select@version@numeric@mode{%
 	\qr@v 40 7090 5597 3994 3058.%
 	\qr@v 39 6744 5314 3792 2928.%

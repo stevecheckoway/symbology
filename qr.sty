@@ -367,6 +367,7 @@
 %   \qr@words@per@blki    number of data codwords per block in group 1
 %   \qr@blks@per@groupii  number of blocks in group 2
 %   \qr@blks@per@groupii  number of data codewords per block in group 2
+%   \qr@total@blks        total number of blocks
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@set@parameters{%
 	% Based on the error correction and length, pick the smallest QR
@@ -455,12 +456,14 @@
 		\chardef\qr@blks@per@groupii=\z@
 		\chardef\qr@words@per@blkii=\z@
 	\fi
+	\chardef\qr@total@blks=\numexpr\qr@blks@per@groupi+\qr@blks@per@groupii\relax
 	\dbg\qr@total@data@words
 	\dbg\qr@ecc@codewords
 	\dbg\qr@blks@per@groupi
 	\dbg\qr@words@per@blki
 	\dbg\qr@blks@per@groupii
 	\dbg\qr@words@per@blkii
+	\dbg\qr@total@blks
 	\qr@reset@data@ptr
 }
 \newcommand*\dbg[1]{\message{\string#1=\number#1^^J}}
@@ -799,7 +802,63 @@
 	\repeat
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Interleaved view of codewords
+%
+% This can be used to access the idx-th msg or ecc codeword.
+% \qr@interleave{arr}{wordsPerBlki}{idx}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@interleave[3]{%
+	% Compute the column first.
+	\csname#1\expandafter\qr@interleave@column\expandafter
+		{\number\qr@div{#3}\qr@total@blks}{#2}{#3}%
+	\endcsname
+}
+
+% \qr@interleave@column{column}{wordsPerBlki}{idx}
+\def\qr@interleave@column#1#2#3{%
+	% The block number is idx-column*total@blks.
+	\expandafter\qr@interleave@blk\expandafter
+		{\number\numexpr#3-#1*\qr@total@blks}{#1}{#2}{#3}%
+}
+
+% \qr@interleave@blk{block}{column}{wordsPerBlki}{idx}
+\def\qr@interleave@blk#1#2#3#4{%
+	\ifnum#2=\numexpr#3\relax
+		% This must be the final column and since the column number is
+		% the number of words per block in group 1, this must be in
+		% group 2. Thus the block number is actually block.
+		2.#1.#2%
+	\else
+		% Either this is not the final column or all groups have the
+		% same number of words per block.
+		\ifnum#1<\qr@blks@per@groupi
+			% Group 1.
+			1.#1.#2%
+		\else
+			% Group 2.
+			2.\number\numexpr#1-\qr@blks@per@groupi\relax.#2%
+		\fi
+	\fi
+}
+
+% eTeX's \numexpr ... \relax rounds division! Compensate for that.
+\def\qr@div#1#2{%
+	\ifnum\numexpr(#1)/(#2)*(#2)\relax>\numexpr#1\relax
+		\expandafter\@firstoftwo
+	\else
+		\expandafter\@secondoftwo
+	\fi
+	{\numexpr(#1)/(#2)-\@ne\relax}%
+	{\numexpr(#1)/(#2)\relax}%
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create a QR code
+%
 % \qrcode[errorcorrection]{width}{str}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand\qrcode[3][Q]{%
 	\edef\qr@ecl{#1}%
 	\setlength\qr@width{#2}%
@@ -807,11 +866,12 @@
 	\qr@analyze@str
 	\qr@set@parameters
 	\qr@encode@str
-	\qrdumpdata
 	\qr@compute@ecc
-	%\qr@interleave
+	%\qrdumpdata
+	\qrdumpinterleaveddata
 }
 
+% Debugging.
 \newcommand*\qrdumpdata{%
 	\qr@reset@data@ptr
 	\loop\ifnum\qr@grp<\thr@@
@@ -819,6 +879,23 @@
 		\qr@advance@data@ptr
 		\
 	\repeat
+}
+
+% Debugging.
+\newcommand*\qrdumpinterleaveddata{%
+	\message{Interleaved data:^^J}%
+	\qr@idx=\z@
+	\loop\ifnum\qr@idx<\qr@total@data@words
+		\message{\number\qr@interleave{qr@msg@}\qr@words@per@blki\qr@idx, }%
+		\advance\qr@idx\@ne
+	\repeat
+	\message{^^JInterleaved ecc:^^J}%
+	\qr@idx=\z@
+	\loop\ifnum\qr@idx<\qr@total@data@words
+		\message{\number\qr@interleave{qr@ecc@}\qr@words@per@blki\qr@idx, }%
+		\advance\qr@idx\@ne
+	\repeat
+	\message{^^J}%
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

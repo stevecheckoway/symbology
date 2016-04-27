@@ -3,6 +3,7 @@
   [2016/04/20 v1.0 Construct QR codes]
 
 \RequirePackage{etoolbox}
+\RequirePackage{xcolor}
 \RequirePackage{trace}
 
 \newdimen\qr@width
@@ -853,6 +854,220 @@
 	{\numexpr(#1)/(#2)\relax}%
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create a QR code block
+%
+% \qrcodeblock{width}{version}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qrcodeblock[2]{%
+	\chardef\qr@ver=\numexpr#2\relax
+	\chardef\qr@modules=\numexpr\qr@ver*4+17\relax
+	\setlength\qr@width{\dimexpr(#1)/\qr@modules\relax}%
+	\qr@zero@modules
+	\qr@add@function@patterns
+	\leavevmode
+	\vbox{%
+		\offinterlineskip
+		\setbox\z@=\hb@xt@\qr@width{\vbox to\qr@width{\vss}\hss}%
+		\setbox\@ne=\hb@xt@\qr@width{\vrule\@width\qr@width\@height\qr@width}%
+		\setbox\tw@=\copy\z@
+		\setbox\thr@@=\copy\@ne
+		\setbox254=\hbox{\textcolor{gray}{\vrule\@width\qr@width\@height\qr@width}}%
+		\iftrue
+		\setbox4=\vbox to\z@{\vss\hrule\@width#1}%
+		\setbox5=\hb@xt@\z@{\hss\vrule\@height\qr@width}%
+		\else
+		\setbox4=\copy\voidb@x
+		\setbox5=\copy\voidb@x
+		\fi
+		\ifvoid4 \else\copy4 \fi
+		\qr@a=\z@
+		\loop\ifnum\qr@a<\qr@modules
+			\hbox{%
+				\ifvoid5 \else\copy5 \fi
+				\qr@b=\z@
+				\loop\ifnum\qr@b<\qr@modules
+					\copy\qr@module\qr@a\qr@b
+					\ifvoid5 \else\copy5 \fi
+					\advance\qr@b\@ne
+				\repeat
+			}%
+			\advance\qr@a\@ne
+			\ifvoid4 \else\copy4 \fi
+		\repeat
+	}%
+}
+
+\def\qr@module#1#2{%
+	\csname qr@m@\number\numexpr#1\relax.\number\numexpr#2\relax\endcsname
+}
+
+\def\qr@module@set#1#2#3{%
+	\global\expandafter\chardef
+	\csname qr@m@\number\numexpr#1\relax.\number\numexpr#2\relax\endcsname=\numexpr#3\relax
+}%
+
+\chardef\qr@white=\z@
+\chardef\qr@black=\@ne
+\chardef\qr@function@white=\tw@
+\chardef\qr@function@black=\thr@@
+
+\def\qr@zero@modules{%
+	\qr@a=\z@
+	\qr@b=\z@
+	\loop\ifnum\qr@a<\qr@modules
+		{%
+		\loop\ifnum\qr@b<\qr@modules
+			\qr@module@set\qr@a\qr@b{254}%
+			\advance\qr@b\@ne
+		\repeat
+		}%
+		\advance\qr@a\@ne
+	\repeat
+}
+
+% Generic addition of modules starting at (\qr@gf@a, \qr@gf@b) and updated
+% according to \qr@v. Modules end with \relax.
+\def\qr@add@generic#1{%
+	\ifx\relax#1\else
+		\qr@module@set{\qr@gf@a}{\qr@gf@b}{#1}%
+		\qr@v
+		\expandafter\qr@add@generic
+	\fi
+}
+
+
+% Add row, increment \qr@gf@a afterword.
+\def\qr@add@row#1{%
+	\begingroup
+	\def\qr@v{\advance\qr@gf@b\@ne}%
+	\qr@add@generic#1\relax
+	\endgroup
+	\advance\qr@gf@a\@ne
+}
+
+\def\qr@add@row@at#1#2{%
+	\qr@gf@a=\numexpr#1\relax
+	\qr@gf@b=\numexpr#2\relax
+	\qr@add@row
+}
+
+% Add col, increment \qr@gf@b afterword.
+\def\qr@add@col#1{%
+	\begingroup
+	\def\qr@v{\advance\qr@gf@a\@ne}%
+	\qr@add@generic#1\relax
+	\endgroup
+	\advance\qr@gf@b\@ne
+}
+
+\def\qr@add@col@at#1#2{%
+	\qr@gf@a=\numexpr#1\relax
+	\qr@gf@b=\numexpr#2\relax
+	\qr@add@col
+}
+
+% Add a finder pattern with separators.
+\def\qr@add@finder#1#2{%
+	\qr@add@row@at{#1}{#2}{3333333}%
+	\qr@add@row{3222223}%
+	\qr@add@row{3233323}%
+	\qr@add@row{3233323}%
+	\qr@add@row{3233323}%
+	\qr@add@row{3222223}%
+	\qr@add@row{3333333}%
+	% Add separators.
+	\ifnum\qr@gf@a=7 % Top left or right, so add below.
+		\qr@add@row{2222222}%
+		\ifnum\qr@gf@b=\z@ % Top left.
+			\qr@add@col@at{\z@}{7}{22222222}%
+		\else % Top right.
+			\qr@add@col@at{\z@}{\qr@gf@b-\@ne}{22222222}%
+		\fi
+	\else % Bottom left.
+		\qr@add@row@at{(#1)-\@ne}{\z@}{22222222}%
+		\qr@add@col@at{\qr@gf@a}{7}{2222222}%
+	\fi
+}
+
+\def\qr@alignment@row{\afterassignment\qr@alignment@rowx\qr@gf@a=}
+\def\qr@alignment@rowx{%
+	\ifnum\qr@gf@a>\z@
+		\advance\qr@gf@a-\tw@
+		\qr@alignment@col\qr@alignments\z@
+		\expandafter\qr@alignment@row
+	\fi
+}
+
+\def\qr@alignment@col{\afterassignment\qr@alignment@colx\qr@gf@b=}%
+\def\qr@alignment@colx{%
+	\ifnum\qr@gf@b>\z@
+		\advance\qr@gf@b-\tw@
+		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b}>10 %<\tw@
+		\ifnum\qr@module{\qr@gf@a+5}{\qr@gf@b}>10 %<\tw@
+		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b+5}>10 %<\tw@
+			\qr@add@row{33333}%
+			\qr@add@row{32223}%
+			\qr@add@row{32323}%
+			\qr@add@row{32223}%
+			\qr@add@row{33333}%
+			\advance\qr@gf@a-5
+		\fi\fi\fi
+		\expandafter\qr@alignment@col
+	\fi
+}
+
+\def\qr@add@timing{%
+	\qr@a=8
+	\qr@b=\numexpr\qr@modules-8\relax
+	\loop\ifnum\qr@a<\qr@b
+		\ifodd\qr@a
+			\qr@module@set{\qr@a}{6}{\qr@function@white}%
+			\qr@module@set{6}{\qr@a}{\qr@function@white}%
+		\else
+			\qr@module@set{\qr@a}{6}{\qr@function@black}%
+			\qr@module@set{6}{\qr@a}{\qr@function@black}%
+		\fi
+		\advance\qr@a\@ne
+	\repeat
+}
+
+% Add reserved space for format and version information as well as the dark
+% module.
+\def\qr@add@reserved{%
+	% Add format reserved spaces.
+	% Top left. Write the timing module to black.
+	\qr@add@row@at{8}{\z@}{222222322}%
+	\qr@add@col@at{\z@}{8}{22222232}%
+	% Top right.
+	\qr@add@row@at{8}{\qr@modules-8}{22222222}%
+	% Bottom left. Include the dark module.
+	\qr@add@col@at{\qr@modules-8}{8}{32222222}%
+	% Add version reserved spaces for versions larger than 6.
+	\ifnum\qr@ver>6
+		\qr@add@row@at{\qr@modules-11}{\z@}{222222}%
+		\qr@add@row{222222}%
+		\qr@add@row{222222}%
+		\qr@add@col@at{\z@}{\qr@modules-11}{222222}%
+		\qr@add@col{222222}%
+		\qr@add@col{222222}%
+	\fi
+}
+
+% Add function patterns and separators
+\def\qr@add@function@patterns{%
+	%% Add Finder patterns and separators
+	\qr@add@finder\z@\z@
+	\qr@add@finder{\qr@ver*4+10}\z@
+	\qr@add@finder\z@{\qr@ver*4+10}%
+	% Add alignment patterns.
+	\qr@set@alignments
+	\qr@alignment@row\qr@alignments\z@
+	%% Add timing patterns.
+	\qr@add@timing
+	%% Add format place holders (and dark module).
+	\qr@add@reserved
+}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Create a QR code
@@ -1035,3 +1250,52 @@
 	\qr@v 1 18 15 12 8.%
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Table-generated alignment mark cordinates.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\qr@set@alignments{%
+	\edef\qr@alignments{%
+		\ifcase\qr@ver
+		\or  % 1
+		\or 6 18 % 2
+		\or 6 22 % 3
+		\or 6 26 % 4
+		\or 6 30 % 5
+		\or 6 34 % 6
+		\or 6 22 38 % 7
+		\or 6 24 42 % 8
+		\or 6 26 46 % 9
+		\or 6 28 50 % 10
+		\or 6 30 54 % 11
+		\or 6 32 58 % 12
+		\or 6 34 62 % 13
+		\or 6 26 46 66 % 14
+		\or 6 26 48 70 % 15
+		\or 6 26 50 74 % 16
+		\or 6 30 54 78 % 17
+		\or 6 30 56 82 % 18
+		\or 6 30 58 86 % 19
+		\or 6 34 62 90 % 20
+		\or 6 28 50 72 94 % 21
+		\or 6 26 50 74 98 % 22
+		\or 6 30 54 78 102 % 23
+		\or 6 28 54 80 106 % 24
+		\or 6 32 58 84 110 % 25
+		\or 6 30 58 86 114 % 26
+		\or 6 34 62 90 118 % 27
+		\or 6 26 50 74 98 122 % 28
+		\or 6 30 54 78 102 126 % 29
+		\or 6 26 52 78 104 130 % 30
+		\or 6 30 56 82 108 134 % 31
+		\or 6 34 60 86 112 138 % 32
+		\or 6 30 58 86 114 142 % 33
+		\or 6 34 62 90 118 146 % 34
+		\or 6 30 54 78 102 126 150 % 35
+		\or 6 24 50 76 102 128 154 % 36
+		\or 6 28 54 80 106 132 158 % 37
+		\or 6 32 58 84 110 136 162 % 38
+		\or 6 26 54 82 110 138 166 % 39
+		\or 6 30 58 86 114 142 170 % 40
+		\fi
+	}%
+}

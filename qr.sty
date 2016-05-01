@@ -6,8 +6,6 @@
 \RequirePackage{xcolor}
 \RequirePackage{trace}
 
-\newdimen\qr@width
-\newcount\qr@len
 \newcount\qr@gf@a
 \newcount\qr@gf@b
 \newcount\qr@gf@r
@@ -17,6 +15,48 @@
 \newcount\qr@c
 \newcount\qr@idx
 \newif\ifqr@inrange
+
+% Nesting loops without groups. Braces are needed around the body.
+% \qr@while\ifnum\a<\b{%
+%	body including other loops!
+% }\qr@repeat
+% Or a do-while loop.
+% \qr@while{%
+%	body including other loops!
+%}\ifnum\a<\b\qr@repeat
+\newcount\qr@loop@depth
+\let\qr@repeat\fi
+\def\qr@while#1#{\qr@whilex{#1}}
+\long\def\qr@whilex#1#2#3\qr@repeat{%
+	\global\advance\qr@loop@depth\@ne
+	\long\csxdef{qr@loop@body@\number\qr@loop@depth}{%
+		\unexpanded{#1\relax #2#3\relax}%
+		\noexpand\expandafter\expandafter\noexpand
+		\csname qr@loop@body@\number\qr@loop@depth\endcsname
+		\noexpand\fi
+	}%
+	\csuse{qr@loop@body@\number\qr@loop@depth}%
+	\global\csundef{qr@loop@body@\number\qr@loop@depth}%
+	\global\advance\qr@loop@depth\m@ne
+}
+
+\def\qr@for#1=#2to#3by#4#{\qr@forx{#1}{#2}{#3}{#4}}
+\long\def\qr@forx#1#2#3#4#5{%
+	\global\advance\qr@loop@depth\@ne
+	\long\csxdef{qr@loop@body@\number\qr@loop@depth}{%
+		\noexpand\ifnum\number\numexpr#3\relax
+		\ifnum\numexpr#4\relax>\z@>\else<\fi\noexpand#1%
+		\unexpanded{#5}%
+		\advance\noexpand#1\number\numexpr#4\relax\relax
+		\noexpand\expandafter\expandafter\noexpand
+		\csname qr@loop@body@\number\qr@loop@depth\endcsname
+		\noexpand\fi
+	}%
+	#1=\numexpr#2\relax
+	\csname qr@loop@body@\number\qr@loop@depth\endcsname
+	\global\csundef{qr@loop@body@\number\qr@loop@depth}%
+	\global\advance\qr@loop@depth\m@ne
+}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Global \chardef of a control sequence.
@@ -36,7 +76,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@make@array[2]{%
 	\edef#1##1{%
-		\noexpand\csname#2\noexpand\number\noexpand\numexpr##1\relax\noexpand\endcsname
+		\noexpand\csname#2\noexpand\number\numexpr##1\relax\endcsname
 	}%
 }
 
@@ -47,8 +87,7 @@
 % \numexpr ... \relax construct and then globally sets \foo{idx} to value.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@array@set[3]{%
-	\global
-	\expandafter\expandafter\expandafter
+	\global\expandafter\expandafter\expandafter
 	\chardef#1{#2}=\numexpr#3\relax
 }
 
@@ -58,11 +97,29 @@
 % \qr@array@unset\foo{idx} undefines \foo{idx}, freeing it from TeX's memory.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@array@unset[2]{%
-	\global
-	\expandafter\expandafter\expandafter
+	\global\expandafter\expandafter\expandafter
 	\let#1{#2}=\@undefined
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Global octet matrices.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@make@matrix[2]{%
+	\edef#1##1##2{%
+		\noexpand\csname#2\noexpand\number\numexpr##1\relax
+		.\noexpand\number\numexpr##2\relax\noexpand\endcsname
+	}%
+}
+
+\newcommand*\qr@matrix@set[4]{%
+	\global\expandafter\expandafter\expandafter
+	\chardef#1{#2}{#3}=\numexpr#4\relax
+}
+
+\newcommand*\qr@matrix@unset[3]{%
+	\global\expandafter\expandafter\expandafter
+	\let#1{#2}{#3}=\@undefined
+}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Polynomial view of an array.
@@ -174,24 +231,21 @@
 \newcommand*\qrgenpoly[1]{%
 	% x + 1
 	\qr@array@set\qrgen\z@\@ne
-	\qr@a=\z@
-	\loop\ifnum#1>\qr@a
+	\qr@for \qr@a=\z@ to#1by\@ne{%
 		\qr@b=\qr@a
 		\advance\qr@b\@ne
 		\qr@array@set\qrgen\qr@b\@ne
 		\gfantilog\qr@c\qr@a
-		{%
-		\loop\ifnum\qr@a>\z@
+		\chardef\qr@save@a=\qr@a % Avoid the group by saving \qr@a.
+		\qr@for \qr@a=\qr@a to\z@ by\m@ne{%
 			\gfmul\qr@b{\qr@c}{\qrgen\qr@a}%
 			\gfadd\qr@b\qr@b{\qrgen{\qr@a-\@ne}}%
 			\qr@array@set\qrgen{\qr@a}\qr@b
-			\advance\qr@a\m@ne
-		\repeat
 		}%
+		\qr@a=\qr@save@a % Restore \qr@a.
 		\gfmul\qr@b{\qrgen\z@}\qr@c
 		\qr@array@set\qrgen\z@\qr@b
-		\advance\qr@a\@ne
-	\repeat
+	}%
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -208,20 +262,16 @@
 	% Copy x^{deg(divisor)}dividend to result
 	\qr@a=#3\relax
 	\qr@b=#5\relax
-	\count@=\qr@a
 	% for (count@ = deg(dividend); count@ >= 0; --count@)
 	%   result[count@ + deg(divisor)] = dividend[count@]
-	\loop\ifnum\count@>\m@ne
+	\qr@for \count@=\qr@a to\m@ne by\m@ne{%
 		\qr@c=\numexpr \count@+\qr@b\relax
 		\qr@array@set{\qr@result}{\qr@c}{\qr@dividend{\count@}}%
-		\advance\count@\m@ne
-	\repeat
+	}%
 	% Set the next deg(divisor) coefficients to 0.
-	\count@=\qr@b
-	\loop\ifnum\count@>\z@
-		\advance\count@\m@ne
+	\qr@for \count@=\qr@b-1 to\m@ne by\m@ne{%
 		\qr@array@set{\qr@result}{\count@}{\z@}%
-	\repeat
+	}%
 	%\qr@dump@poly\qr@result{\qr@a+\qr@b}%
 	% Perform the division.
 	% for (a=deg(dividend); a >= 0; --a)
@@ -230,55 +280,45 @@
 	%    result[a + b] = result[a + b] (+) c*divisor[b]
 	%  result[a + deg(divisor)] = undefined
 	% Since the divisor is monic, when b=deg(divisor), result[a+b]=0 and
-	% really, we're going to undefine result[a+b] anyway, so just scip
-	% that by moving the --b to the beginning of the inner loop and make
-	% the guard >0.
-	\loop\ifnum\qr@a>\m@ne
-		% We need to protect the inner loop with braces so the inner
-		% \repeat does not match the outer \loop. This has the side
-		% effect of letting us use \qr@b as a counter since it'll be
-		% restore after the loop.
-		{%
+	% really, we're going to undefine result[a+b] anyway, so just skip
+	% that.
+	\qr@for \qr@a=\qr@a to\m@ne by\m@ne{%
 		\qr@c=\qr@result{\qr@a+\qr@b}%
-		%\message{Step \number\qr@a\space Lead coefficient = \number\qr@c^^J}%
-		\loop\ifnum\qr@b>\z@
-			\advance\qr@b\m@ne
+		\chardef\qr@save@b=\qr@b % Save \qr@b to avoid the group.
+		\qr@for \qr@b=\qr@b-\@ne to\m@ne by\m@ne{%
 			\gfmul\count@\qr@c{\qr@divisor{\qr@b}}%
 			\gfadd\count@\count@{\qr@result{\qr@a+\qr@b}}%
 			\qr@array@set{\qr@result}{\qr@a+\qr@b}{\count@}%
-		\repeat
-		}
+		}%
+		\qr@b=\qr@save@b
 		% Undefine the zeroed coefficient.
-		%\message{Undefining \number\numexpr\qr@a+\qr@b\relax^^J}%
 		\qr@array@unset{\qr@result}{\qr@a+\qr@b}%
-		\advance\qr@a\m@ne
-		%\qr@dump@poly\qr@result{\qr@a+\qr@b}%
-	\repeat
+	}
 	\endgroup
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Iterate over the QR message
 %
-% Iterate over each token in \qr@str and expand #1 with \qr@token set to the
+% Iterate over each token in \qr@msg and expand #1 with \qr@token set to the
 % token.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@foreach@token[1]{%
 	\def\qr@foreach@v{#1}%
-	\expandafter\futurelet\expandafter\qr@token\expandafter\qr@foreach\qr@str\qr@foreach
+	\expandafter\futurelet\expandafter\qr@token\expandafter\qr@foreach\qr@msg\qr@foreach
 }
 
 \def\qr@foreach{%
 	\ifx\qr@token\qr@foreach
-		\let\qr@next\@gobble
+		\let\qr@gf@next\@gobble
 	\else
 		\ifx\qr@token\@sptoken
-			\let\qr@next\qr@foreach@space
+			\let\qr@gf@next\qr@foreach@space
 		\else
-			\let\qr@next\qr@foreach@nonspace
+			\let\qr@gf@next\qr@foreach@nonspace
 		\fi
 	\fi
-	\qr@next
+	\qr@gf@next
 }
 
 \def\qr@foreach@nonspace#1{%
@@ -318,12 +358,12 @@
 % Computes the length of the message and the minimum mode required to encode
 % the message. Sets \qr@len and \qr@mode.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\qr@analyze@str{%
-	\qr@len=\z@
+\newcommand*\qr@analyze@msg{%
+	\qr@gf@n=\z@
 	\qr@a=\@ne % Numeric.
 	\qr@b=\@ne % Alphanumeric.
 	\qr@foreach@token{%
-		\advance\qr@len\@ne
+		\advance\qr@gf@n\@ne
 		\ifnum\qr@b=\@ne
 			\qr@c=\expandafter`\qr@token
 			\qr@check@range\qr@c{`0}{`9}%
@@ -346,6 +386,7 @@
 			\fi
 		\fi
 	}%
+	\chardef\qr@len=\qr@gf@n
 	\ifnum\qr@a=\@ne
 		\def\qr@mode{numeric}%
 	\else\ifnum\qr@b=\@ne
@@ -358,33 +399,20 @@
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Set the QR parameters.
+% Select version.
 %
-% Sets the QR version (which controls the number of "modules" per row and
-% column) as well as internal parameters:
-%   \qr@total@data@words  total number of data codewords
-%   \qr@ecc@codewords     number of ECC codewords per block
-%   \qr@blks@per@groupi   number of blocks in group 1
-%   \qr@words@per@blki    number of data codwords per block in group 1
-%   \qr@blks@per@groupii  number of blocks in group 2
-%   \qr@blks@per@groupii  number of data codewords per block in group 2
-%   \qr@total@blks        total number of blocks
+% Select the minimum version that supports the given error correction level,
+% length, and mode.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\qr@set@parameters{%
-	% Based on the error correction and length, pick the smallest QR
-	% version for byte mode.
+\newcommand*\qr@select@version{%
 	\if L\qr@ecl
 		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##2 \chardef\qr@ver=##1\relax\fi}%
-		\def\qr@next##1##2##3##4{\qr@next##1.}%
 	\else \if M\qr@ecl
 		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##3 \chardef\qr@ver=##1\relax\fi}%
-		\def\qr@next##1##2##3##4{\qr@next##2.}%
 	\else \if Q\qr@ecl
 		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##4 \chardef\qr@ver=##1\relax\fi}%
-		\def\qr@next##1##2##3##4{\qr@next##3.}%
 	\else \if H\qr@ecl
 		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##5 \chardef\qr@ver=##1\relax\fi}%
-		\def\qr@next##1##2##3##4{\qr@next##4.}%
 	\else
 		\PackageError{qr}{Invalid error correction parameter.}
 			{Valid values are L, M, Q, and H}%
@@ -392,15 +420,37 @@
 	\chardef\qr@ver=\z@
 	% Pick the appropriate version for the mode.
 	\csname qr@select@version@\qr@mode @mode\endcsname
-	\ifnum\qr@ver=\z@
-		\PackageError{qr}{String is too long for given error
-			correction level}{}%
-	\fi
-	% Set the other parameters.
-	\let\qr@v\qr@next
-	\def\qr@next##1 ##2 ##3 ##4.{%
-		\chardef\qr@total@data@words=##1\relax
-		\chardef\qr@ecc@codewords=##2\relax
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Set the QR parameters.
+%
+% Sets internal parameters based on the version and error correction level.
+%   \qr@total@data@words  total number of data codewords
+%   \qr@total@ecc@words   total number of ECC codewords
+%   \qr@ecc@words@per@blk number of ECC codewords per block
+%   \qr@blks@per@groupi   number of blocks in group 1
+%   \qr@words@per@blki    number of data codwords per block in group 1
+%   \qr@blks@per@groupii  number of blocks in group 2
+%   \qr@blks@per@groupii  number of data codewords per block in group 2
+%   \qr@total@blks        total number of blocks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@set@parameters{%
+	\if L\qr@ecl
+		\def\qr@v##1##2##3##4{\qr@gf@next##1.}%
+	\else \if M\qr@ecl
+		\def\qr@v##1##2##3##4{\qr@gf@next##2.}%
+	\else \if Q\qr@ecl
+		\def\qr@v##1##2##3##4{\qr@gf@next##3.}%
+	\else \if H\qr@ecl
+		\def\qr@v##1##2##3##4{\qr@gf@next##4.}%
+	\else
+		\PackageError{qr}{Invalid error correction parameter.}
+			{Valid values are L, M, Q, and H}%
+	\fi\fi\fi\fi
+	\def\qr@gf@next##1 ##2 ##3 ##4.{%
+		\mathchardef\qr@total@data@words=##1\relax
+		\chardef\qr@ecc@words@per@blk=##2\relax
 		\chardef\qr@blks@per@groupi=##3\relax
 		\chardef\qr@words@per@blki=##4\relax
 	}%
@@ -458,8 +508,10 @@
 		\chardef\qr@words@per@blkii=\z@
 	\fi
 	\chardef\qr@total@blks=\numexpr\qr@blks@per@groupi+\qr@blks@per@groupii\relax
+	\mathchardef\qr@total@ecc@words=\numexpr\qr@total@blks*\qr@ecc@words@per@blk\relax
 	\dbg\qr@total@data@words
-	\dbg\qr@ecc@codewords
+	\dbg\qr@total@ecc@words
+	\dbg\qr@ecc@words@per@blk
 	\dbg\qr@blks@per@groupi
 	\dbg\qr@words@per@blki
 	\dbg\qr@blks@per@groupii
@@ -536,7 +588,7 @@
 
 % Write the codeword at the current pointer and increment the pointer.
 \newcommand*\qr@append@word[1]{%
-	\message{\number\qr@grp.\number\qr@blk.\number\qr@idx=\number#1^^J}%
+	%\message{\number\qr@grp.\number\qr@blk.\number\qr@idx=\number#1^^J}%
 	\csgchardef{qr@msg@\number\qr@grp.\number\qr@blk.\number\qr@idx}=#1\relax
 	\qr@advance@data@ptr
 }
@@ -700,7 +752,7 @@
 % are used as described above. Up to four padding bits are added, then
 % additional padding bits are added to bring the total up to a multiple of 8.
 % Finally, add padding codewords (alternating 236 and 17).
-\newcommand*\qr@encode@str{%
+\newcommand*\qr@encode@msg{%
 	\qr@gf@a=\z@ % Total bits encoded.
 	\qr@a=\z@    % Encoded but not stored bits.
 	\qr@c=\z@    % Number of bits encoded (in \qr@a) but not stored.
@@ -724,13 +776,11 @@
 	% Number of words of padding (we can use eTeX's rounding division
 	% because qr@gf@a is a multiple of 8 due to the final zero encodings
 	% above).
-	\qr@a=\numexpr\qr@total@data@words-\qr@gf@a/8\relax
 	% Append 236 and 17 until the full size has been reached.
-	\loop\ifnum\qr@a>\@ne
+	\qr@for \qr@a=\qr@total@data@words-\qr@gf@a/8to\@ne by-\tw@{%
 		\qr@append@word{236}%
 		\qr@append@word{17}%
-		\advance\qr@a-2
-	\repeat
+	}%
 	\ifnum\qr@a>\z@
 		\qr@append@word{236}%
 	\fi
@@ -741,24 +791,19 @@
 	\begingroup
 	\edef\qr@arr{#1}%
 	\message{Dumping array \qr@arr:^^J}%
-	\qr@b=#2\relax
-	\qr@a=\z@
-	\loop\ifnum\qr@a<\qr@b
+	\qr@for \qr@a=\z@ to#2by\@ne{%
 		\message{\qr@arr\number\qr@a=\number\csname\qr@arr\number\qr@a\endcsname^^J}%
-		\advance\qr@a\@ne
-	\repeat
+	}%
 	\endgroup
 }
 
 % Debugging.
 \newcommand*\qr@dump@poly[2]{%
 	\begingroup
-	\qr@a=\numexpr#2\relax
 	\message{\string#1=(}%
-	\loop\ifnum\qr@a>\z@
+	\qr@for \qr@a=#2to\z@ by\m@ne{%
 		\message{\number#1{\qr@a}, }%
-		\advance\qr@a\m@ne
-	\repeat
+	}%
 	\message{\number#1{\z@})^^J}%
 	\endgroup
 }
@@ -773,34 +818,21 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@compute@ecc{%
 	% Construct the generator polynomial.
-	\qrgenpoly\qr@ecc@codewords
-	% Compute the ECC for each block in group 1.
-	% b = degree of msg polynomial
-	\qr@b=\numexpr\qr@words@per@blki-\@ne\relax
-	\qr@a=\z@
-	\loop\ifnum\qr@a<\qr@blks@per@groupi
-		\qr@polynomial@view\qr@result{qr@ecc@1.\number\qr@a.}{\qr@ecc@codewords-\@ne}%
-		\qr@polynomial@view\qr@divisor{qr@msg@1.\number\qr@a.}\qr@b
-		\qr@poly@remainder
-			\qr@result
-			\qr@divisor\qr@b
-			\qrgen\qr@ecc@codewords
-		\qr@dump@array{qr@ecc@1.\number\qr@a.}\qr@ecc@codewords
-		\advance\qr@a\@ne
-	\repeat
-	% Compute the ECC for each block in group 2.
-	\qr@a=\z@
-	\qr@b=\numexpr\qr@words@per@blkii-\@ne\relax
-	\loop\ifnum\qr@a<\qr@blks@per@groupii
-		\qr@polynomial@view\qr@result{qr@ecc@2.\number\qr@a.}{\qr@ecc@codewords-\@ne}%
-		\qr@polynomial@view\qr@divisor{qr@msg@2.\number\qr@a.}\qr@b
-		\qr@poly@remainder
-			\qr@result
-			\qr@divisor\qr@b
-			\qrgen\qr@ecc@codewords
-		\qr@dump@array{qr@ecc@2.\number\qr@a.}\qr@ecc@codewords
-		\advance\qr@a\@ne
-	\repeat
+	\qrgenpoly\qr@ecc@words@per@blk
+	\qr@for \qr@c=\@ne to\thr@@ by\@ne{%
+		% Compute the ECC for each block in group \qr@c
+		% b = degree of msg polynomial
+		\qr@b=\numexpr\csname qr@words@per@blk\romannumeral\qr@c\endcsname-\@ne\relax
+		\qr@for \qr@a=\z@ to\csname qr@blks@per@group\romannumeral\qr@c\endcsname by\@ne{%
+			\qr@polynomial@view\qr@result{qr@ecc@\number\qr@c.\number\qr@a.}{\qr@ecc@words@per@blk-\@ne}%
+			\qr@polynomial@view\qr@divisor{qr@msg@\number\qr@c.\number\qr@a.}\qr@b
+			\qr@poly@remainder
+				\qr@result
+				\qr@divisor\qr@b
+				\qrgen\qr@ecc@words@per@blk
+			%\qr@dump@array{qr@ecc@\number\qr@c.\number\qr@a.}\qr@ecc@words@per@blk
+		}%
+	}%
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -820,7 +852,7 @@
 \def\qr@interleave@column#1#2#3{%
 	% The block number is idx-column*total@blks.
 	\expandafter\qr@interleave@blk\expandafter
-		{\number\numexpr#3-#1*\qr@total@blks}{#1}{#2}{#3}%
+		{\number\numexpr#3-#1*\qr@total@blks\relax}{#1}{#2}{#3}%
 }
 
 % \qr@interleave@blk{block}{column}{wordsPerBlki}{idx}
@@ -843,16 +875,41 @@
 	\fi
 }
 
-% eTeX's \numexpr ... \relax rounds division! Compensate for that.
+% eTeX's \numexpr ... \relax rounds division! Compensate for that. Both
+% \qr@div and \qr@mod require positive integers.
 \def\qr@div#1#2{%
-	\ifnum\numexpr(#1)/(#2)*(#2)\relax>\numexpr#1\relax
-		\expandafter\@firstoftwo
-	\else
-		\expandafter\@secondoftwo
-	\fi
-	{\numexpr(#1)/(#2)-\@ne\relax}%
-	{\numexpr(#1)/(#2)\relax}%
+	\expandafter\qr@divx\expandafter
+	{\number\numexpr#1\expandafter\relax\expandafter}\expandafter
+	{\number\numexpr#2\relax}%
 }
+\def\qr@divx#1#2{%
+	\expandafter\qr@divy\expandafter{\number\numexpr#1/#2\relax}{#1}{#2}%
+}
+\def\qr@divy#1#2#3{%
+	\numexpr#1
+	\ifnum#2<\numexpr#1*#3\relax
+		-\@ne
+	\fi
+	\relax
+}
+
+\def\qr@mod#1#2{%
+	\expandafter\qr@divx\expandafter
+	{\the\numexpr#1\expandafter\relax\expandafter}\expandafter
+	{\the\numexpr#2\relax}%
+}
+\def\qr@modx#1#2{\numexpr#1-#2*\qr@divx{#1}{#2}\relax}
+
+\def\qr@modii#1{%
+	\ifodd\numexpr#1\relax
+		\expandafter\@ne
+	\else
+		\expandafter\z@
+	\fi
+}
+
+\def\qr@modiii#1{\qr@mod{#1}\thr@@}
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Create a QR code block
@@ -860,70 +917,68 @@
 % \qrcodeblock{width}{version}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qrcodeblock[2]{%
-	\chardef\qr@ver=\numexpr#2\relax
-	\chardef\qr@modules=\numexpr\qr@ver*4+17\relax
-	\setlength\qr@width{\dimexpr(#1)/\qr@modules\relax}%
-	\qr@zero@modules
-	\qr@add@function@patterns
 	\leavevmode
 	\vbox{%
 		\offinterlineskip
-		\setbox\z@=\hb@xt@\qr@width{\vbox to\qr@width{\vss}\hss}%
-		\setbox\@ne=\hb@xt@\qr@width{\vrule\@width\qr@width\@height\qr@width}%
-		\setbox\tw@=\copy\z@
-		\setbox\thr@@=\copy\@ne
-		\setbox254=\hbox{\textcolor{gray}{\vrule\@width\qr@width\@height\qr@width}}%
-		\iftrue
-		\setbox4=\vbox to\z@{\vss\hrule\@width#1}%
-		\setbox5=\hb@xt@\z@{\hss\vrule\@height\qr@width}%
+		\def\qr@msg{HELLO WORLD}%
+		\def\qr@ecl{M}%
+		\qr@analyze@msg
+		\chardef\qr@ver=\numexpr#2\relax
+		\qr@set@parameters
+		\qr@encode@msg
+		\qr@compute@ecc
+		% Draw.
+		\chardef\qr@modules=\numexpr\qr@ver*4+17\relax
+		\dimen@=\dimexpr(#1)/\qr@modules\relax
+		% Clear modules.
+		\qr@foreach@module{\qr@module@set\qr@gf@a\qr@gf@b\qr@blank}%
+		\qr@add@function@patterns
+		\qr@add@data@modules
+		\qr@mask@data
+		\setbox\qr@white=\hb@xt@\dimen@{\vbox to\dimen@{\vss}\hss}%
+		\setbox\qr@black=\hb@xt@\dimen@{\vrule\@width\dimen@\@height\dimen@}%
+		%\setbox\qr@function@white=\copy\qr@white
+		%\setbox\qr@function@black=\copy\qr@black
+		%\setbox\qr@blank=\hbox{\textcolor{gray}{\vrule\@width\dimen@\@height\dimen@}}%
+		\iffalse
+			\setbox4=\vbox to\z@{\vss\hrule\@width#1}%
+			\setbox5=\hb@xt@\z@{\hss\vrule\@height\dimen@}%
 		\else
-		\setbox4=\copy\voidb@x
-		\setbox5=\copy\voidb@x
+			\setbox4=\copy\voidb@x
+			\setbox5=\copy\voidb@x
 		\fi
 		\ifvoid4 \else\copy4 \fi
-		\qr@a=\z@
-		\loop\ifnum\qr@a<\qr@modules
+		\qr@for \qr@a=\z@ to\qr@modules by\@ne{%
 			\hbox{%
 				\ifvoid5 \else\copy5 \fi
-				\qr@b=\z@
-				\loop\ifnum\qr@b<\qr@modules
-					\copy\qr@module\qr@a\qr@b
+				\qr@for \qr@b=\z@ to\qr@modules by\@ne{%
+					\copy\qr@masked\qr@a\qr@b
 					\ifvoid5 \else\copy5 \fi
-					\advance\qr@b\@ne
-				\repeat
+				}%
 			}%
-			\advance\qr@a\@ne
 			\ifvoid4 \else\copy4 \fi
-		\repeat
+		}%
 	}%
 }
 
-\def\qr@module#1#2{%
-	\csname qr@m@\number\numexpr#1\relax.\number\numexpr#2\relax\endcsname
-}
+\qr@make@matrix\qr@module{qr@m@}
+\qr@make@matrix\qr@maskedi{qr@M1@}
+\qr@make@matrix\qr@maskedii{qr@M2@}
 
-\def\qr@module@set#1#2#3{%
-	\global\expandafter\chardef
-	\csname qr@m@\number\numexpr#1\relax.\number\numexpr#2\relax\endcsname=\numexpr#3\relax
-}%
+% XXX: Remove
+\def\qr@module@set{\qr@matrix@set\qr@module}
 
 \chardef\qr@white=\z@
 \chardef\qr@black=\@ne
 \chardef\qr@function@white=\tw@
 \chardef\qr@function@black=\thr@@
+\chardef\qr@blank=254
 
-\def\qr@zero@modules{%
-	\qr@a=\z@
-	\qr@b=\z@
-	\loop\ifnum\qr@a<\qr@modules
-		{%
-		\loop\ifnum\qr@b<\qr@modules
-			\qr@module@set\qr@a\qr@b{254}%
-			\advance\qr@b\@ne
-		\repeat
-		}%
-		\advance\qr@a\@ne
-	\repeat
+% Iterate over all module values (qr@gf@a, qr@gf@b) = (row, col).
+\def\qr@foreach@module#1{%
+	\qr@for \qr@gf@a=\z@ to\qr@modules by\@ne{%
+		\qr@for \qr@gf@b=\z@ to\qr@modules by\@ne{#1}%
+	}%
 }
 
 % Generic addition of modules starting at (\qr@gf@a, \qr@gf@b) and updated
@@ -1003,9 +1058,9 @@
 \def\qr@alignment@colx{%
 	\ifnum\qr@gf@b>\z@
 		\advance\qr@gf@b-\tw@
-		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b}>10 %<\tw@
-		\ifnum\qr@module{\qr@gf@a+5}{\qr@gf@b}>10 %<\tw@
-		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b+5}>10 %<\tw@
+		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b}=\qr@blank
+		\ifnum\qr@module{\qr@gf@a+5}{\qr@gf@b}=\qr@blank
+		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b+5}=\qr@blank
 			\qr@add@row{33333}%
 			\qr@add@row{32223}%
 			\qr@add@row{32323}%
@@ -1018,9 +1073,7 @@
 }
 
 \def\qr@add@timing{%
-	\qr@a=8
-	\qr@b=\numexpr\qr@modules-8\relax
-	\loop\ifnum\qr@a<\qr@b
+	\qr@for \qr@a=8 to\qr@modules-8by\@ne{%
 		\ifodd\qr@a
 			\qr@module@set{\qr@a}{6}{\qr@function@white}%
 			\qr@module@set{6}{\qr@a}{\qr@function@white}%
@@ -1028,8 +1081,7 @@
 			\qr@module@set{\qr@a}{6}{\qr@function@black}%
 			\qr@module@set{6}{\qr@a}{\qr@function@black}%
 		\fi
-		\advance\qr@a\@ne
-	\repeat
+	}
 }
 
 % Add reserved space for format and version information as well as the dark
@@ -1069,21 +1121,243 @@
 	\qr@add@reserved
 }
 
+% Add a module.
+\def\qr@add@module#1{%
+	%\message{\space\space(\number\qr@gf@a,\number\qr@gf@b)^^J}%
+	\ifnum#1>\qr@c
+		\qr@module@set{\qr@gf@a}{\qr@gf@b}{\qr@white}%
+	\else
+		\qr@module@set{\qr@gf@a}{\qr@gf@b}{\qr@black}%
+		\advance\qr@c-#1\relax
+	\fi
+	\qr@advance@module@ptr
+}
+
+% Zig zag back and forth, ignoring function modules.
+\def\qr@advance@module@ptr{%
+	\ifqr@inrange
+		\qr@inrangefalse
+		\advance\qr@gf@b\m@ne
+	\else
+		\qr@inrangetrue
+		% Move to the next row (either up or down).
+		\advance\qr@gf@a\qr@gf@n
+		\ifnum\qr@gf@a<\z@
+			\qr@gf@n=\@ne
+			\qr@gf@a=\z@
+			\advance\qr@gf@b\m@ne
+		\else\ifnum\qr@gf@a=\qr@modules
+			\qr@gf@n=\m@ne
+			\advance\qr@gf@a\m@ne
+			\advance\qr@gf@b\m@ne
+		\else
+			\advance\qr@gf@b\@ne
+		\fi\fi
+		% If the column is 6 (the timing pattern), move left.
+		\ifnum\qr@gf@b=6
+			\qr@gf@b=5
+		\fi
+	\fi
+	% If we moved onto a function pattern or reserved area, advance again,
+	% unless we are finished.
+	\ifnum\qr@gf@b>\m@ne
+		\ifnum\qr@module{\qr@gf@a}{\qr@gf@b}=\qr@blank\else
+			\expandafter\expandafter\expandafter
+			\qr@advance@module@ptr
+		\fi
+	\fi
+}
+
+% Add words
+\def\qr@add@words#1#2#3{%
+	\qr@for \qr@idx=\z@ to#3by\@ne{%
+		\qr@c=\qr@interleave{#1}{#2}\qr@idx
+		%\message{Word \number\qr@c\space at
+		%	(\number\qr@gf@a,\number\qr@gf@b)^^J}%
+		\qr@add@module{128}%
+		\qr@add@module{64}%
+		\qr@add@module{\@xxxii}%
+		\qr@add@module{\sixt@@n}%
+		\qr@add@module{8}%
+		\qr@add@module{4}%
+		\qr@add@module{\tw@}%
+		\qr@add@module{\@ne}%
+	}%
+}
+
+% Add the data and remainder modules.
+\def\qr@add@data@modules{%
+	% Starting coordinates.
+	\qr@gf@a=\numexpr\qr@modules-\@ne\relax
+	\qr@gf@b=\qr@gf@a
+	\qr@inrangetrue % On the right side of the column.
+	\qr@gf@n=\m@ne % Going up.
+	\qr@add@words{qr@msg@}\qr@words@per@blki\qr@total@data@words
+	\qr@add@words{qr@ecc@}\qr@ecc@words@per@blk\qr@total@ecc@words
+	% Remainder bits.
+	\qr@while\ifnum\qr@gf@b>\m@ne{%
+		\qr@module@set{\qr@gf@a}{\qr@gf@b}{\qr@white}%
+		\qr@advance@module@ptr
+	}\qr@repeat
+}
+
+\def\qr@eval@color@change#1#2{%
+	\count@=\numexpr#2-#1\relax
+	% Evaluation 3.
+	\ifnum\qr@c=\qr@black
+		\ifnum\count6=\count@
+		\ifnum\count4=\numexpr\thr@@*\count@\relax
+		\ifnum\count\tw@=\count@
+		\ifnum\count\z@=\count@
+			%\message{Finder pattern at (\number\qr@gf@a,\number\qr@gf@b)^^J}%
+			\advance\qr@gf@r40
+		\fi\fi\fi\fi
+	\fi
+	\count\z@=\count\tw@
+	\count\tw@=\count4
+	\count4=\count6
+	\count6=\count@
+	% Evaluation 1.
+	\ifnum\count@>4
+		\advance\qr@gf@r\numexpr\count@-\tw@
+	\fi
+	#1=#2%
+	\qr@c=\numexpr\@ne-\qr@c\relax
+}
+
+\def\qr@try@mask#1#2{%
+	\qr@foreach@module{%
+		\qr@c=\qr@module\qr@gf@a\qr@gf@b
+		\ifnum\qr@c<\tw@
+			\ifnum\numexpr#2\relax=\z@
+				\qr@c=\numexpr\@ne-\qr@c\relax
+			\fi
+		\else
+			\qr@c=\ifodd\qr@c \qr@black \else \qr@white \fi
+		\fi
+		\qr@matrix@set\qr@masked\qr@gf@a\qr@gf@b\qr@c
+	}%
+	\qr@gf@r=\z@
+	% Perform the four evaluations in two passes.
+	% Pass 1:
+	% a = number of black modules
+	% b = col, c = color
+	% \count 0, 2, 4, 6 = extents of previous four colors
+	\qr@a=\z@
+	\qr@for \qr@gf@a=\z@ to\qr@modules by\@ne{%
+		\qr@b=\z@
+		\qr@c=\qr@white
+		\count\z@=\z@
+		\count\tw@=\z@
+		\count4=\z@
+		\count6=\z@
+		\qr@for \qr@gf@b=\z@ to\qr@modules by\@ne{%
+			% Evaluation 2.
+			\ifnum\qr@gf@a>\z@
+			\ifnum\qr@gf@b>\z@
+				\count@=\qr@masked{\qr@gf@a-1}{\qr@gf@b-1}%
+				\ifnum\qr@masked{\qr@gf@a-1}{\qr@gf@b}=\count@
+				\ifnum\qr@masked{\qr@gf@a}{\qr@gf@b-1}=\count@
+				\ifnum\qr@masked{\qr@gf@a}{\qr@gf@b}=\count@
+					\advance\qr@gf@r\thr@@
+				\fi\fi\fi
+			\fi\fi
+			% Evaluation 4.
+			\ifnum\qr@c=\qr@black
+				\advance\qr@a\@ne
+			\fi
+			% Evaluations 1 and 3 (row).
+			\ifnum\qr@c=\qr@masked{\qr@gf@a}{\qr@gf@b}\else
+				\qr@eval@color@change\qr@b\qr@gf@b
+			\fi
+		}%
+		\qr@eval@color@change\qr@b\qr@gf@b
+	}%
+	% Evaluation 4.
+	% 0 <= 5*a <= 100*black/total < 5*(a+1) <= 100
+	% 0 <= a <= 20*black/total < a+1 <= 20
+	\multiply\qr@a20
+	\divide\qr@a\numexpr\qr@modules*\qr@modules\relax
+	\qr@b=\numexpr\qr@a+\@ne\relax
+	\advance\qr@a-10
+	\ifnum\qr@a<\z@ \qr@a=-\qr@a \fi
+	\advance\qr@b-10
+	\ifnum\qr@b<\z@ \qr@a=-\qr@b \fi
+	\advance\qr@gf@r\numexpr10*\ifnum\qr@a<\qr@b \qr@a \else \qr@b \fi\relax
+	% Pass 2:
+	% The outer loop moves over columns and the inner loop over rows (the
+	% opposite of pass 1).
+	% a = row, c = col
+	% \count 0, 2, 4, 6 = extents of previous four colors
+	\qr@for \qr@gf@b=\z@ to\qr@modules by\@ne{%
+		\qr@a=\z@
+		\qr@c=\qr@white
+		\count\z@=\z@
+		\count\tw@=\z@
+		\count4=\z@
+		\count6=\z@
+		\qr@for \qr@gf@a=\z@ to\qr@modules by\@ne{%
+			% Evaluations 1 and 3 (col)
+			\ifnum\qr@c=\qr@masked{\qr@gf@a}{\qr@gf@b}\else
+				\qr@eval@color@change\qr@a\qr@gf@a
+			\fi
+		}%
+		\qr@eval@color@change\qr@a\qr@gf@a
+	}%
+	\message{Mask #1 score: \number\qr@gf@r^^J}%
+	\ifnum\qr@gf@r<\qr@gf@n
+		\message{Using mask #1^^J}%
+		\qr@gf@n=\qr@gf@r
+		\ifnum\qr@masked@val=\tw@
+			\let\qr@masked\qr@maskedii
+			\chardef\qr@masked@val=\@ne
+		\else
+			\let\qr@masked\qr@maskedi
+			\chardef\qr@masked@val=\tw@
+		\fi
+	\fi
+}
+
+\def\qr@mask@data{%
+	\chardef\qr@masked@val=\tw@
+	\let\qr@masked\qr@maskedi
+	\qr@gf@n="3FFFFFFF
+	\qr@try@mask0{\qr@modii{\qr@gf@a+\qr@gf@b}}%
+	\qr@try@mask1{\qr@modii\qr@gf@a}%
+	\qr@try@mask2{\qr@modiii\qr@gf@b}%
+	\qr@try@mask3{\qr@modiii{\qr@gf@a+\qr@gf@b}}%
+	\qr@try@mask4{\qr@modii{\qr@div\qr@gf@a\tw@+\qr@div\qr@gf@b\thr@@}}%
+	\qr@try@mask5{\qr@modii{\qr@gf@a*\qr@gf@b}+\qr@modiii{\qr@gf@a*\qr@gf@b}}%
+	\qr@try@mask6{\qr@modii{\qr@modii{\qr@gf@a*\qr@gf@b}+\qr@modiii{\qr@gf@a*\qr@gf@b}}}%
+	\qr@try@mask7{\qr@modii{\qr@modiii{\qr@gf@a*\qr@gf@b}+\qr@modii{\qr@gf@a+\qr@gf@b}}}%
+	\letcs\qr@masked{qr@masked\romannumeral\qr@masked@val}%
+}
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Create a QR code
 %
 % \qrcode[errorcorrection]{width}{str}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand\qrcode[3][Q]{%
+	\begingroup
 	\edef\qr@ecl{#1}%
-	\setlength\qr@width{#2}%
-	\edef\qr@str{\detokenize{#3}}%
-	\qr@analyze@str
+	\edef\qr@msg{\detokenize{#3}}%
+	\qr@analyze@msg
+	\qr@select@version
+	\ifnum\qr@ver=\z@
+		\PackageError{qr}%
+			{String length \number\qr@len\space too long
+			for \qr@mode-mode\MessageBreak at error compression
+			level \qr@ecl.}{}
+	\fi
 	\qr@set@parameters
-	\qr@encode@str
+	\qr@encode@msg
 	\qr@compute@ecc
 	%\qrdumpdata
-	\qrdumpinterleaveddata
+	%\qrdumpinterleaveddata
+	\endgroup
 }
 
 % Debugging.
@@ -1106,8 +1380,8 @@
 	\repeat
 	\message{^^JInterleaved ecc:^^J}%
 	\qr@idx=\z@
-	\loop\ifnum\qr@idx<\qr@total@data@words
-		\message{\number\qr@interleave{qr@ecc@}\qr@words@per@blki\qr@idx, }%
+	\loop\ifnum\qr@idx<\qr@total@ecc@words
+		\message{\number\qr@interleave{qr@ecc@}\qr@ecc@words@per@blk\qr@idx, }%
 		\advance\qr@idx\@ne
 	\repeat
 	\message{^^J}%

@@ -3,7 +3,6 @@
   [2016/04/20 v1.0 Construct QR codes]
 
 \RequirePackage{etoolbox}
-\RequirePackage{xcolor}
 \RequirePackage{trace}
 
 \newcount\qr@gf@a
@@ -405,14 +404,10 @@
 % length, and mode.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\qr@select@version{%
-	\if L\qr@ecl
-		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##2 \chardef\qr@ver=##1\relax\fi}%
-	\else \if M\qr@ecl
-		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##3 \chardef\qr@ver=##1\relax\fi}%
-	\else \if Q\qr@ecl
-		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##4 \chardef\qr@ver=##1\relax\fi}%
-	\else \if H\qr@ecl
-		\def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##5 \chardef\qr@ver=##1\relax\fi}%
+	\if      L\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##2 \chardef\qr@ver=##1\relax\fi}%
+	\else\if M\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##3 \chardef\qr@ver=##1\relax\fi}%
+	\else\if Q\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##4 \chardef\qr@ver=##1\relax\fi}%
+	\else\if H\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##5 \chardef\qr@ver=##1\relax\fi}%
 	\else
 		\PackageError{qr}{Invalid error correction parameter.}
 			{Valid values are L, M, Q, and H}%
@@ -920,7 +915,7 @@
 	\leavevmode
 	\vbox{%
 		\offinterlineskip
-		\def\qr@msg{HELLO WORLD}%
+		\def\qr@msg{0110248326}%
 		\def\qr@ecl{M}%
 		\qr@analyze@msg
 		\chardef\qr@ver=\numexpr#2\relax
@@ -928,35 +923,26 @@
 		\qr@encode@msg
 		\qr@compute@ecc
 		% Draw.
-		\chardef\qr@modules=\numexpr\qr@ver*4+17\relax
-		\dimen@=\dimexpr(#1)/\qr@modules\relax
+		\chardef\qr@num@modules=\numexpr\qr@ver*4+17\relax
+		\dimen@=\dimexpr(#1)/\qr@num@modules\relax
 		% Clear modules.
+		\let\qr@current@matrix\qr@module
 		\qr@foreach@module{\qr@module@set\qr@gf@a\qr@gf@b\qr@blank}%
 		\qr@add@function@patterns
 		\qr@add@data@modules
 		\qr@mask@data
+		\let\qr@current@matrix\qr@masked
+		\qr@add@format
+		\qr@add@version
 		\setbox\qr@white=\hb@xt@\dimen@{\vbox to\dimen@{\vss}\hss}%
 		\setbox\qr@black=\hb@xt@\dimen@{\vrule\@width\dimen@\@height\dimen@}%
-		%\setbox\qr@function@white=\copy\qr@white
-		%\setbox\qr@function@black=\copy\qr@black
-		%\setbox\qr@blank=\hbox{\textcolor{gray}{\vrule\@width\dimen@\@height\dimen@}}%
-		\iffalse
-			\setbox4=\vbox to\z@{\vss\hrule\@width#1}%
-			\setbox5=\hb@xt@\z@{\hss\vrule\@height\dimen@}%
-		\else
-			\setbox4=\copy\voidb@x
-			\setbox5=\copy\voidb@x
-		\fi
-		\ifvoid4 \else\copy4 \fi
-		\qr@for \qr@a=\z@ to\qr@modules by\@ne{%
+		\qr@for \qr@a=\z@ to\qr@num@modules by\@ne{%
 			\hbox{%
-				\ifvoid5 \else\copy5 \fi
-				\qr@for \qr@b=\z@ to\qr@modules by\@ne{%
+				\qr@for \qr@b=\z@ to\qr@num@modules by\@ne{%
 					\copy\qr@masked\qr@a\qr@b
 					\ifvoid5 \else\copy5 \fi
 				}%
 			}%
-			\ifvoid4 \else\copy4 \fi
 		}%
 	}%
 }
@@ -965,8 +951,7 @@
 \qr@make@matrix\qr@maskedi{qr@M1@}
 \qr@make@matrix\qr@maskedii{qr@M2@}
 
-% XXX: Remove
-\def\qr@module@set{\qr@matrix@set\qr@module}
+\def\qr@module@set{\qr@matrix@set\qr@current@matrix}
 
 \chardef\qr@white=\z@
 \chardef\qr@black=\@ne
@@ -976,8 +961,8 @@
 
 % Iterate over all module values (qr@gf@a, qr@gf@b) = (row, col).
 \def\qr@foreach@module#1{%
-	\qr@for \qr@gf@a=\z@ to\qr@modules by\@ne{%
-		\qr@for \qr@gf@b=\z@ to\qr@modules by\@ne{#1}%
+	\qr@for \qr@gf@a=\z@ to\qr@num@modules by\@ne{%
+		\qr@for \qr@gf@b=\z@ to\qr@num@modules by\@ne{#1}%
 	}%
 }
 
@@ -1073,7 +1058,7 @@
 }
 
 \def\qr@add@timing{%
-	\qr@for \qr@a=8 to\qr@modules-8by\@ne{%
+	\qr@for \qr@a=8 to\qr@num@modules-8by\@ne{%
 		\ifodd\qr@a
 			\qr@module@set{\qr@a}{6}{\qr@function@white}%
 			\qr@module@set{6}{\qr@a}{\qr@function@white}%
@@ -1092,15 +1077,15 @@
 	\qr@add@row@at{8}{\z@}{222222322}%
 	\qr@add@col@at{\z@}{8}{22222232}%
 	% Top right.
-	\qr@add@row@at{8}{\qr@modules-8}{22222222}%
+	\qr@add@row@at{8}{\qr@num@modules-8}{22222222}%
 	% Bottom left. Include the dark module.
-	\qr@add@col@at{\qr@modules-8}{8}{32222222}%
+	\qr@add@col@at{\qr@num@modules-8}{8}{32222222}%
 	% Add version reserved spaces for versions larger than 6.
 	\ifnum\qr@ver>6
-		\qr@add@row@at{\qr@modules-11}{\z@}{222222}%
+		\qr@add@row@at{\qr@num@modules-11}{\z@}{222222}%
 		\qr@add@row{222222}%
 		\qr@add@row{222222}%
-		\qr@add@col@at{\z@}{\qr@modules-11}{222222}%
+		\qr@add@col@at{\z@}{\qr@num@modules-11}{222222}%
 		\qr@add@col{222222}%
 		\qr@add@col{222222}%
 	\fi
@@ -1146,7 +1131,7 @@
 			\qr@gf@n=\@ne
 			\qr@gf@a=\z@
 			\advance\qr@gf@b\m@ne
-		\else\ifnum\qr@gf@a=\qr@modules
+		\else\ifnum\qr@gf@a=\qr@num@modules
 			\qr@gf@n=\m@ne
 			\advance\qr@gf@a\m@ne
 			\advance\qr@gf@b\m@ne
@@ -1188,7 +1173,7 @@
 % Add the data and remainder modules.
 \def\qr@add@data@modules{%
 	% Starting coordinates.
-	\qr@gf@a=\numexpr\qr@modules-\@ne\relax
+	\qr@gf@a=\numexpr\qr@num@modules-\@ne\relax
 	\qr@gf@b=\qr@gf@a
 	\qr@inrangetrue % On the right side of the column.
 	\qr@gf@n=\m@ne % Going up.
@@ -1244,14 +1229,14 @@
 	% b = col, c = color
 	% \count 0, 2, 4, 6 = extents of previous four colors
 	\qr@a=\z@
-	\qr@for \qr@gf@a=\z@ to\qr@modules by\@ne{%
+	\qr@for \qr@gf@a=\z@ to\qr@num@modules by\@ne{%
 		\qr@b=\z@
 		\qr@c=\qr@white
 		\count\z@=\z@
 		\count\tw@=\z@
 		\count4=\z@
 		\count6=\z@
-		\qr@for \qr@gf@b=\z@ to\qr@modules by\@ne{%
+		\qr@for \qr@gf@b=\z@ to\qr@num@modules by\@ne{%
 			% Evaluation 2.
 			\ifnum\qr@gf@a>\z@
 			\ifnum\qr@gf@b>\z@
@@ -1277,7 +1262,7 @@
 	% 0 <= 5*a <= 100*black/total < 5*(a+1) <= 100
 	% 0 <= a <= 20*black/total < a+1 <= 20
 	\multiply\qr@a20
-	\divide\qr@a\numexpr\qr@modules*\qr@modules\relax
+	\divide\qr@a\numexpr\qr@num@modules*\qr@num@modules\relax
 	\qr@b=\numexpr\qr@a+\@ne\relax
 	\advance\qr@a-10
 	\ifnum\qr@a<\z@ \qr@a=-\qr@a \fi
@@ -1289,14 +1274,14 @@
 	% opposite of pass 1).
 	% a = row, c = col
 	% \count 0, 2, 4, 6 = extents of previous four colors
-	\qr@for \qr@gf@b=\z@ to\qr@modules by\@ne{%
+	\qr@for \qr@gf@b=\z@ to\qr@num@modules by\@ne{%
 		\qr@a=\z@
 		\qr@c=\qr@white
 		\count\z@=\z@
 		\count\tw@=\z@
 		\count4=\z@
 		\count6=\z@
-		\qr@for \qr@gf@a=\z@ to\qr@modules by\@ne{%
+		\qr@for \qr@gf@a=\z@ to\qr@num@modules by\@ne{%
 			% Evaluations 1 and 3 (col)
 			\ifnum\qr@c=\qr@masked{\qr@gf@a}{\qr@gf@b}\else
 				\qr@eval@color@change\qr@a\qr@gf@a
@@ -1308,6 +1293,7 @@
 	\ifnum\qr@gf@r<\qr@gf@n
 		\message{Using mask #1^^J}%
 		\qr@gf@n=\qr@gf@r
+		\chardef\qr@mask@pattern=#1\relax
 		\ifnum\qr@masked@val=\tw@
 			\let\qr@masked\qr@maskedii
 			\chardef\qr@masked@val=\@ne
@@ -1333,7 +1319,124 @@
 	\letcs\qr@masked{qr@masked\romannumeral\qr@masked@val}%
 }
 
+% Format bits 14:8
+\def\qr@format@high#1#2#3#4#5#6#7{%
+	\qr@add@row@at{8}{\z@}{#1#2#3#4#5#6\qr@black#7}%
+	\qr@add@col@at{\qr@num@modules-7}{8}{#7#6#5#4#3#2#1}%
+	\qr@format@low
+}
 
+% Format bits 7:0
+\def\qr@format@low#1#2#3#4#5#6#7#8{%
+	\qr@add@row@at{8}{\qr@num@modules-8}{#1#2#3#4#5#6#7#8}%
+	\qr@add@col@at{\z@}{8}{#8#7#6#5#4#3\qr@black#2#1}%
+}
+
+\def\qr@add@format{%
+	\if      L\qr@ecl \qr@a=8
+	\else\if M\qr@ecl \qr@a=\z@
+	\else\if Q\qr@ecl \qr@a=24
+	\else             \qr@a=16
+	\fi\fi\fi
+	\advance\qr@a\qr@mask@pattern
+	\expandafter\qr@format@high
+	\ifcase\qr@a 101010000010010%
+	\or          101000100100101%
+	\or          101111001111100%
+	\or          101101101001011%
+	\or          100010111111001%
+	\or          100000011001110%
+	\or          100111110010111%
+	\or          100101010100000%
+	\or          111011111000100%
+	\or          111001011110011%
+	\or          111110110101010%
+	\or          111100010011101%
+	\or          110011000101111%
+	\or          110001100011000%
+	\or          110110001000001%
+	\or          110100101110110%
+	\or          001011010001001%
+	\or          001001110111110%
+	\or          001110011100111%
+	\or          001100111010000%
+	\or          000011101100010%
+	\or          000001001010101%
+	\or          000110100001100%
+	\or          000100000111011%
+	\or          011010101011111%
+	\or          011000001101000%
+	\or          011111100110001%
+	\or          011101000000110%
+	\or          010010010110100%
+	\or          010000110000011%
+	\or          010111011011010%
+	\or          010101111101101%
+	\fi
+}
+
+% Version bits 17:9
+\def\qr@version@high#1#2#3#4#5#6#7#8#9{%
+	\qr@add@row@at{\thr@@}{\qr@num@modules-11}{#9#8#7}%
+	\qr@add@row{#6#5#4}%
+	\qr@add@row{#3#2#1}%
+	\qr@add@col@at{\qr@num@modules-11}{\thr@@}{#9#8#7}%
+	\qr@add@col{#6#5#4}%
+	\qr@add@col{#3#2#1}%
+	\qr@version@low
+}
+
+% Version bits 8:0
+\def\qr@version@low#1#2#3#4#5#6#7#8#9{%
+	\qr@add@row@at{\z@}{\qr@num@modules-11}{#9#8#7}%
+	\qr@add@row{#6#5#4}%
+	\qr@add@row{#3#2#1}%
+	\qr@add@col@at{\qr@num@modules-11}{\z@}{#9#8#7}%
+	\qr@add@col{#6#5#4}%
+	\qr@add@col{#3#2#1}%
+}
+
+\def\qr@add@version{%
+	\ifnum\qr@ver>6
+		\expandafter\qr@version@high
+		\ifcase\numexpr\qr@ver-7\relax
+		    000111110010010100
+		\or 001000010110111100
+		\or 001001101010011001
+		\or 001010010011010011
+		\or 001011101111110110
+		\or 001100011101100010
+		\or 001101100001000111
+		\or 001110011000001101
+		\or 001111100100101000
+		\or 010000101101111000
+		\or 010001010001011101
+		\or 010010101000010111
+		\or 010011010100110010
+		\or 010100100110100110
+		\or 010101011010000011
+		\or 010110100011001001
+		\or 010111011111101100
+		\or 011000111011000100
+		\or 011001000111100001
+		\or 011010111110101011
+		\or 011011000010001110
+		\or 011100110000011010
+		\or 011101001100111111
+		\or 011110110101110101
+		\or 011111001001010000
+		\or 100000100111010101
+		\or 100001011011110000
+		\or 100010100010111010
+		\or 100011011110011111
+		\or 100100101100001011
+		\or 100101010000101110
+		\or 100110101001100100
+		\or 100111010101000001
+		\or 101000110001101001
+		\fi
+	\fi
+}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Create a QR code

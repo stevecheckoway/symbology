@@ -4,6 +4,76 @@
 
 \RequirePackage{etoolbox}
 \RequirePackage{trace}
+\RequirePackage{xkeyval}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Check if a value is in range
+%
+% \qr@check@range{x}{begin}{end} sets the \ifqr@inrange conditional to true if
+% begin <= x <= end.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@check@range[3]{%
+	\qr@inrangefalse
+	\ifnum#1>#3\else
+		\ifnum#1<#2\else
+			\qr@inrangetrue
+		\fi
+	\fi
+}
+\newif\ifqr@inrange
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Options.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\qr@star{*}
+\newcommand*\qr@star@or@range[3]{%
+	\ifx#1\qr@star
+		\qr@inrangetrue
+	\else
+		\qr@check@range{#1}{#2}{#3}%
+	\fi
+}
+
+% Normal options.
+\define@cmdkey{qr}[qr@]{width}{}
+\let\KV@qr@height=\KV@qr@width % Alias.
+\define@cmdkey{qr}[qr@requested@]{version}{%
+	\qr@star@or@range\qr@requested@version\@ne{40}%
+	\ifqr@inrange\else
+		\PackageError{qr}{Requested version `#1' invalid.\MessageBreak
+				Valid values: 1-40 or *}{}%
+	\fi
+}
+\define@choicekey+{qr}{mode}[\qr@requested@mode\qr@requested@mode@nr]{numeric,alphanum,byte,*}{}
+	{\PackageError{qr}{Requested mode `#1' invalid.\MessageBreak
+			   Valid values: numeric, alphanum, byte, or *}{}}
+\define@choicekey+{qr}{level}[\qr@requested@ecl\qr@requested@ecl@nr]{*,L,M,Q,H}{}
+	{\PackageError{qr}{Requested error correction level `#1' invalid.\MessageBreak
+	                   Valid values: L, M, Q, H, or *}{}}
+
+% Uncommon options.
+\define@cmdkey{qr}[qr@requested@]{mask}{%
+	\qr@star@or@range\qr@requested@mask\z@7%
+	\ifqr@inrange\else
+		\PackageError{qr}{Requested mask `#1' invalid.\MessageBreak
+				Valid values: 0-7 or *}{}%
+	\fi
+}
+\define@boolkey{qr}[qr@]{strictlevel}[true]{}
+
+% Debugging options.
+\def\qr@set@debugging{%
+	\let\ifqr@dbg@data=\ifqr@dbg@all
+	\let\ifqr@dbg@ecc=\ifqr@dbg@all
+	\let\ifqr@dbg@interleave=\ifqr@dbg@all
+}
+\define@boolkeys{qr@dbg}[qr@dbg@]{data,ecc,interleave}[true]
+\define@boolkey{qr@dbg}[qr@dbg@]{all}[true]{\qr@set@debugging}
+\define@key{qr}{debug}{\setkeys{qr@dbg}{#1}}
+
+% Preset keys.
+\presetkeys{qr}{width=2cm,version=*,mode=*,level=*,mask=*}{}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \newcount\qr@gf@a
 \newcount\qr@gf@b
@@ -13,7 +83,6 @@
 \newcount\qr@b
 \newcount\qr@c
 \newcount\qr@idx
-\newif\ifqr@inrange
 
 % Nesting loops without groups. Braces are needed around the body.
 % \qr@while\ifnum\a<\b{%
@@ -337,21 +406,6 @@
 \endgroup
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Check if a value is in range
-%
-% \qr@check@range{x}{begin}{end} sets the \ifqr@inrange conditional to true if
-% begin <= x <= end.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\qr@check@range[3]{%
-	\qr@inrangefalse
-	\ifnum#1>#3\else
-		\ifnum#1<#2\else
-			\qr@inrangetrue
-		\fi
-	\fi
-}
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Analyze the QR message
 %
 % Computes the length of the message and the minimum mode required to encode
@@ -388,10 +442,22 @@
 	\chardef\qr@len=\qr@gf@n
 	\ifnum\qr@a=\@ne
 		\def\qr@mode{numeric}%
+		\qr@a=\z@
 	\else\ifnum\qr@b=\@ne
 		\def\qr@mode{alphanum}%
+		\qr@a=\@ne
 	\else
 		\def\qr@mode{byte}%
+		\qr@a=\tw@
+	\fi\fi
+	% If the requested mode is less than the minimum mode, it's an error.
+	\ifx\qr@requested@mode\qr@star\else
+	\ifnum\qr@requested@mode@nr<\qr@a
+		\PackageError{qr}{Requested mode `\qr@requested@mode'
+			not sufficient to encode data.\MessageBreak
+			Mode `\qr@mode' or high necessary}{}%
+	\else
+		\let\qr@mode=\qr@requested@mode
 	\fi\fi
 	\message{String length: \number\qr@len^^J}%
 	\message{QR mode: \qr@mode^^J}%
@@ -403,18 +469,71 @@
 % Select the minimum version that supports the given error correction level,
 % length, and mode.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\qr@select@version{%
-	\if      L\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##2 \chardef\qr@ver=##1\relax\fi}%
-	\else\if M\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##3 \chardef\qr@ver=##1\relax\fi}%
-	\else\if Q\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##4 \chardef\qr@ver=##1\relax\fi}%
-	\else\if H\qr@ecl \def\qr@v##1 ##2 ##3 ##4 ##5.{\ifnum\qr@len<##5 \chardef\qr@ver=##1\relax\fi}%
-	\else
-		\PackageError{qr}{Invalid error correction parameter.}
-			{Valid values are L, M, Q, and H}%
-	\fi\fi\fi\fi
-	\chardef\qr@ver=\z@
-	% Pick the appropriate version for the mode.
+\def\qr@version@for@L#1 #2 #3 #4 #5.{\ifnum\qr@len<#2 \chardef\qr@ver=#1\relax\fi}%
+\def\qr@version@for@M#1 #2 #3 #4 #5.{\ifnum\qr@len<#3 \chardef\qr@ver=#1\relax\fi}%
+\def\qr@version@for@Q#1 #2 #3 #4 #5.{\ifnum\qr@len<#4 \chardef\qr@ver=#1\relax\fi}%
+\def\qr@version@for@H#1 #2 #3 #4 #5.{\ifnum\qr@len<#5 \chardef\qr@ver=#1\relax\fi}%
+\def\qr@version@for@ecl#1{%
+	\edef\qr@ecl{#1}%
+	\letcs\qr@v{qr@version@for@\qr@ecl}%
 	\csname qr@select@version@\qr@mode @mode\endcsname
+}
+
+\def\qr@ecl@in@range#1#2{%
+	% if a <= #1 && #1 <= b,
+	\ifnum\qr@a>#1\else
+	\ifnum#1>\qr@b\else
+		\def\qr@ecl{#2}%
+	\fi\fi
+}
+\def\qr@ecl@for@version@#1 #2 #3 #4 #5.{%
+	\ifnum#1=\qr@ver
+		\ifnum\qr@len<#2\relax \qr@ecl@in@range1L\fi
+		\ifnum\qr@len<#3\relax \qr@ecl@in@range2M\fi
+		\ifnum\qr@len<#4\relax \qr@ecl@in@range3Q\fi
+		\ifnum\qr@len<#5\relax \qr@ecl@in@range4H\fi
+	\fi
+}
+\def\qr@ecl@for@version{%
+	\let\qr@v=\qr@ecl@for@version@
+	\csname qr@select@version@\qr@mode @mode\endcsname
+}
+
+\newcommand*\qr@select@version{%
+	% Pick the appropriate version and ecl for the mode.
+	\chardef\qr@ver=\z@
+	\let\qr@ecl=\relax
+	\qr@a=\qr@requested@ecl@nr\relax % Minimum ecl.
+	\qr@b=4 % Maximum ecl.
+	\ifx\qr@requested@version\qr@star
+		% Version not requested, take the minimum version for the ecl.
+		\ifx\qr@requested@ecl\qr@star
+			% Ecl not requested, try M, the "standard" level, per
+			% Annex I. If M is too high, try L.
+			\qr@version@for@ecl M
+			\ifnum\qr@ver=\z@
+				\qr@version@for@ecl L
+			\else
+				% Look for a higher ecl for the same version.
+				\qr@ecl@for@version
+			\fi
+		\else
+			% Ecl requested.
+			\qr@version@for@ecl \qr@requested@ecl
+			\ifqr@strictlevel\else
+				\qr@ecl@for@version
+			\fi
+		\fi
+	\else
+		% Version requested.
+		\chardef\qr@ver=\qr@requested@version\relax
+		% If requested@ecl != * and strictlevel, be strict.
+		\ifx\qr@requested@ecl\qr@star\else
+		\ifqr@strictlevel
+				\qr@b=\qr@a
+		\fi\fi
+		\qr@ecl@for@version
+	\fi
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -440,7 +559,7 @@
 	\else \if H\qr@ecl
 		\def\qr@v##1##2##3##4{\qr@gf@next##4.}%
 	\else
-		\PackageError{qr}{Invalid error correction parameter.}
+		\PackageError{qr}{Invalid error correction parameter}
 			{Valid values are L, M, Q, and H}%
 	\fi\fi\fi\fi
 	\def\qr@gf@next##1 ##2 ##3 ##4.{%
@@ -779,15 +898,31 @@
 	\ifnum\qr@a>\z@
 		\qr@append@word{236}%
 	\fi
+	\ifqr@dbg@data
+		\qr@dump@matrix{qr@msg@1.}\qr@blks@per@groupi\qr@words@per@blki
+		\qr@dump@matrix{qr@msg@2.}\qr@blks@per@groupii\qr@words@per@blkii
+	\fi
 }
 
 % Debugging.
 \newcommand\qr@dump@array[2]{%
 	\begingroup
 	\edef\qr@arr{#1}%
-	\message{Dumping array \qr@arr:^^J}%
 	\qr@for \qr@a=\z@ to#2by\@ne{%
 		\message{\qr@arr\number\qr@a=\number\csname\qr@arr\number\qr@a\endcsname^^J}%
+	}%
+	\endgroup
+}
+
+\newcommand\qr@dump@matrix[3]{%
+	\begingroup
+	\qr@make@matrix\qr@matrix{#1}%
+	\qr@for \qr@gf@a=\z@ to#2by\@ne{%
+		\message{#1\number\qr@gf@a\space =}%
+		\qr@for \qr@gf@b=\z@ to#3by\@ne{%
+			\message{\number\qr@matrix\qr@gf@a\qr@gf@b}%
+		}
+		\message{^^J}%
 	}%
 	\endgroup
 }
@@ -825,9 +960,12 @@
 				\qr@result
 				\qr@divisor\qr@b
 				\qrgen\qr@ecc@words@per@blk
-			%\qr@dump@array{qr@ecc@\number\qr@c.\number\qr@a.}\qr@ecc@words@per@blk
 		}%
 	}%
+	\ifqr@dbg@ecc
+		\qr@dump@matrix{qr@ecc@1.}\qr@blks@per@groupi\qr@ecc@words@per@blk
+		\qr@dump@matrix{qr@ecc@2.}\qr@blks@per@groupii\qr@ecc@words@per@blk
+	\fi
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -889,7 +1027,7 @@
 }
 
 \def\qr@mod#1#2{%
-	\expandafter\qr@divx\expandafter
+	\expandafter\qr@modx\expandafter
 	{\the\numexpr#1\expandafter\relax\expandafter}\expandafter
 	{\the\numexpr#2\relax}%
 }
@@ -914,11 +1052,11 @@
 \newcommand*\qrcodeblock[2]{%
 	\leavevmode
 	\vbox{%
+		\setkeys{qr}{width=#1,level=M,version=#2}
 		\offinterlineskip
 		\def\qr@msg{0110248326}%
-		\def\qr@ecl{M}%
 		\qr@analyze@msg
-		\chardef\qr@ver=\numexpr#2\relax
+		\qr@select@version
 		\qr@set@parameters
 		\qr@encode@msg
 		\qr@compute@ecc
@@ -935,7 +1073,11 @@
 		\qr@add@format
 		\qr@add@version
 		\setbox\qr@white=\hb@xt@\dimen@{\vbox to\dimen@{\vss}\hss}%
-		\setbox\qr@black=\hb@xt@\dimen@{\vrule\@width\dimen@\@height\dimen@}%
+		\setbox\qr@black=\hbox{%
+			\vrule\@width\dimexpr\dimen@+.2pt\relax
+			      \@height\dimen@\@depth.2pt}%
+		\wd\qr@black=\dimen@
+		\dp\qr@black=\z@
 		\qr@for \qr@a=\z@ to\qr@num@modules by\@ne{%
 			\hbox{%
 				\qr@for \qr@b=\z@ to\qr@num@modules by\@ne{%
@@ -1210,11 +1352,21 @@
 	\qr@c=\numexpr\@ne-\qr@c\relax
 }
 
-\def\qr@try@mask#1#2{%
+\csdef{qr@mask@expr@0}{\qr@modii{\qr@gf@a+\qr@gf@b}}
+\csdef{qr@mask@expr@1}{\qr@modii\qr@gf@a}
+\csdef{qr@mask@expr@2}{\qr@modiii\qr@gf@b}
+\csdef{qr@mask@expr@3}{\qr@modiii{\qr@gf@a+\qr@gf@b}}
+\csdef{qr@mask@expr@4}{\qr@modii{\qr@div\qr@gf@a\tw@+\qr@div\qr@gf@b\thr@@}}
+\csdef{qr@mask@expr@5}{\qr@modii{\qr@gf@a*\qr@gf@b}+\qr@modiii{\qr@gf@a*\qr@gf@b}}
+\csdef{qr@mask@expr@6}{\qr@modii{\qr@modii{\qr@gf@a*\qr@gf@b}+\qr@modiii{\qr@gf@a*\qr@gf@b}}}
+\csdef{qr@mask@expr@7}{\qr@modii{\qr@modiii{\qr@gf@a*\qr@gf@b}+\qr@modii{\qr@gf@a+\qr@gf@b}}}
+
+\def\qr@try@mask#1{%
+	\letcs\qr@mask@expr{qr@mask@expr@\number#1}%
 	\qr@foreach@module{%
 		\qr@c=\qr@module\qr@gf@a\qr@gf@b
 		\ifnum\qr@c<\tw@
-			\ifnum\numexpr#2\relax=\z@
+			\ifnum\numexpr\qr@mask@expr\relax=\z@
 				\qr@c=\numexpr\@ne-\qr@c\relax
 			\fi
 		\else
@@ -1308,14 +1460,18 @@
 	\chardef\qr@masked@val=\tw@
 	\let\qr@masked\qr@maskedi
 	\qr@gf@n="3FFFFFFF
-	\qr@try@mask0{\qr@modii{\qr@gf@a+\qr@gf@b}}%
-	\qr@try@mask1{\qr@modii\qr@gf@a}%
-	\qr@try@mask2{\qr@modiii\qr@gf@b}%
-	\qr@try@mask3{\qr@modiii{\qr@gf@a+\qr@gf@b}}%
-	\qr@try@mask4{\qr@modii{\qr@div\qr@gf@a\tw@+\qr@div\qr@gf@b\thr@@}}%
-	\qr@try@mask5{\qr@modii{\qr@gf@a*\qr@gf@b}+\qr@modiii{\qr@gf@a*\qr@gf@b}}%
-	\qr@try@mask6{\qr@modii{\qr@modii{\qr@gf@a*\qr@gf@b}+\qr@modiii{\qr@gf@a*\qr@gf@b}}}%
-	\qr@try@mask7{\qr@modii{\qr@modiii{\qr@gf@a*\qr@gf@b}+\qr@modii{\qr@gf@a+\qr@gf@b}}}%
+	\ifx\qr@requested@mask\qr@star
+		\qr@try@mask0%
+		\qr@try@mask1%
+		\qr@try@mask2%
+		\qr@try@mask3%
+		\qr@try@mask4%
+		\qr@try@mask5%
+		\qr@try@mask6%
+		\qr@try@mask7%
+	\else
+		\qr@try@mask\qr@requested@mask
+	\fi
 	\letcs\qr@masked{qr@masked\romannumeral\qr@masked@val}%
 }
 
@@ -1441,30 +1597,66 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Create a QR code
 %
-% \qrcode[errorcorrection]{width}{str}
+% \qrcode[options]{str}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand\qrcode[3][Q]{%
+\newcommand\qrcode[2][]{%
 	\begingroup
-	\edef\qr@ecl{#1}%
-	\edef\qr@msg{\detokenize{#3}}%
+	\setkeys{qr}{#1}%
+	\edef\qr@msg{\detokenize{#2}}%
 	\qr@analyze@msg
 	\qr@select@version
 	\ifnum\qr@ver=\z@
 		\PackageError{qr}%
+			{String length \number\qr@len\space too long for
+			\qr@mode-mode\MessageBreak at error compression level \qr@ecl}{}%
+	\fi
+	\ifx\qr@ecl\relax
+		\PackageError{qr}%
 			{String length \number\qr@len\space too long
-			for \qr@mode-mode\MessageBreak at error compression
-			level \qr@ecl.}{}
+			for \qr@mode-mode\MessageBreak for version \number\qr@ver}{}%
 	\fi
 	\qr@set@parameters
 	\qr@encode@msg
 	\qr@compute@ecc
-	%\qrdumpdata
-	%\qrdumpinterleaveddata
+	\ifqr@dbg@interleave \qr@dump@interleaved@data \fi
+	% Construct matrix.
+	\chardef\qr@num@modules=\numexpr\qr@ver*4+17\relax
+	% Clear modules.
+	\let\qr@current@matrix\qr@module
+	\qr@foreach@module{\qr@module@set\qr@gf@a\qr@gf@b\qr@blank}%
+	\qr@add@function@patterns
+	\qr@add@data@modules
+	\qr@mask@data
+	\let\qr@current@matrix\qr@masked
+	\qr@add@format
+	\qr@add@version
+	% Draw.
+	\leavevmode
+	\vbox{%
+		\offinterlineskip
+		\dimen@=\dimexpr(\qr@width)/\qr@num@modules\relax
+		\setbox\qr@white=\hb@xt@\dimen@{\vbox to\dimen@{\vss}\hss}%
+		\setbox\qr@black=\hbox{%
+			\vrule\@width\dimexpr\dimen@+.2pt\relax
+			      \@height\dimen@\@depth.2pt}%
+		\wd\qr@black=\dimen@
+		\dp\qr@black=\z@
+		\qr@for \qr@a=\z@ to\qr@num@modules by\@ne{%
+			\hbox{%
+				\qr@for \qr@b=\z@ to\qr@num@modules by\@ne{%
+					\copy\qr@masked\qr@a\qr@b
+					\ifvoid5 \else\copy5 \fi
+				}%
+			}%
+		}%
+	}%
 	\endgroup
 }
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Debugging.
-\newcommand*\qrdumpdata{%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@dump@data{%
 	\qr@reset@data@ptr
 	\loop\ifnum\qr@grp<\thr@@
 		\number\csname qr@msg@\number\qr@grp.\number\qr@blk.\number\qr@idx\endcsname
@@ -1473,18 +1665,17 @@
 	\repeat
 }
 
-% Debugging.
-\newcommand*\qrdumpinterleaveddata{%
+\newcommand*\qr@dump@interleaved@data{%
 	\message{Interleaved data:^^J}%
 	\qr@idx=\z@
 	\loop\ifnum\qr@idx<\qr@total@data@words
-		\message{\number\qr@interleave{qr@msg@}\qr@words@per@blki\qr@idx, }%
+		\message{\number\qr@interleave{qr@msg@}\qr@words@per@blki\qr@idx}%
 		\advance\qr@idx\@ne
 	\repeat
 	\message{^^JInterleaved ecc:^^J}%
 	\qr@idx=\z@
 	\loop\ifnum\qr@idx<\qr@total@ecc@words
-		\message{\number\qr@interleave{qr@ecc@}\qr@ecc@words@per@blk\qr@idx, }%
+		\message{\number\qr@interleave{qr@ecc@}\qr@ecc@words@per@blk\qr@idx}%
 		\advance\qr@idx\@ne
 	\repeat
 	\message{^^J}%

@@ -210,8 +210,8 @@
 %
 % \gfadd{r}{a}{b}  sets r = a + b
 % \gfmul{r}{a}{b}  sets r = a * b
-% \gflog{r}{a}     sets r = log_alpha a
-% \gfantilog{r}{a} sets r = alpha^a
+% r=\gflog{a}     sets r = log_alpha a
+% r=\gfantilog{a} sets r = alpha^a
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \newcommand*\qr@xor@bit{%
@@ -262,12 +262,12 @@
 \ifnum\qr@a<\@cclv\repeat
 \csgchardef{gf@antilog@255}=\@ne
 
-\newcommand*\gflog[2]{%
-	#1=\csuse{gf@log@\number#2}%
+\newcommand*\gflog[1]{%
+	\csname gf@log@\number#1\endcsname
 }
 
-\newcommand*\gfantilog[2]{%
-	#1=\csuse{gf@antilog@\number#2}%
+\newcommand*\gfantilog[1]{%
+	\csname gf@antilog@\number#1\endcsname
 }
 
 \newcommand*\gfmul[3]{%
@@ -278,13 +278,13 @@
 	\else \ifnum\qr@gf@b=\z@
 		#1=\z@
 	\else
-		\gflog\qr@gf@a\qr@gf@a
-		\gflog\qr@gf@b\qr@gf@b
+		\qr@gf@a=\gflog\qr@gf@a
+		\qr@gf@b=\gflog\qr@gf@b
 		\advance\qr@gf@a\qr@gf@b
 		\ifnum\qr@gf@a>254
 			\advance\qr@gf@a-\@cclv
 		\fi
-		\gfantilog{#1}\qr@gf@a
+		#1=\gfantilog\qr@gf@a
 	\fi\fi
 }
 
@@ -303,7 +303,7 @@
 		\qr@b=\qr@a
 		\advance\qr@b\@ne
 		\qr@array@set\qrgen\qr@b\@ne
-		\gfantilog\qr@c\qr@a
+		\qr@c=\gfantilog\qr@a
 		\chardef\qr@save@a=\qr@a % Avoid the group by saving \qr@a.
 		\qr@for \qr@a=\qr@a to\z@ by\m@ne{%
 			\gfmul\qr@b{\qr@c}{\qrgen\qr@a}%
@@ -905,15 +905,6 @@
 }
 
 % Debugging.
-\newcommand\qr@dump@array[2]{%
-	\begingroup
-	\edef\qr@arr{#1}%
-	\qr@for \qr@a=\z@ to#2by\@ne{%
-		\message{\qr@arr\number\qr@a=\number\csname\qr@arr\number\qr@a\endcsname^^J}%
-	}%
-	\endgroup
-}
-
 \newcommand\qr@dump@matrix[3]{%
 	\begingroup
 	\qr@make@matrix\qr@matrix{#1}%
@@ -1042,52 +1033,6 @@
 }
 
 \def\qr@modiii#1{\qr@mod{#1}\thr@@}
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Create a QR code block
-%
-% \qrcodeblock{width}{version}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\qrcodeblock[2]{%
-	\leavevmode
-	\vbox{%
-		\setkeys{qr}{width=#1,level=M,version=#2}
-		\offinterlineskip
-		\def\qr@msg{0110248326}%
-		\qr@analyze@msg
-		\qr@select@version
-		\qr@set@parameters
-		\qr@encode@msg
-		\qr@compute@ecc
-		% Draw.
-		\chardef\qr@num@modules=\numexpr\qr@ver*4+17\relax
-		\dimen@=\dimexpr(#1)/\qr@num@modules\relax
-		% Clear modules.
-		\let\qr@current@matrix\qr@module
-		\qr@foreach@module{\qr@module@set\qr@gf@a\qr@gf@b\qr@blank}%
-		\qr@add@function@patterns
-		\qr@add@data@modules
-		\qr@mask@data
-		\let\qr@current@matrix\qr@masked
-		\qr@add@format
-		\qr@add@version
-		\setbox\qr@white=\hb@xt@\dimen@{\vbox to\dimen@{\vss}\hss}%
-		\setbox\qr@black=\hbox{%
-			\vrule\@width\dimexpr\dimen@+.2pt\relax
-			      \@height\dimen@\@depth.2pt}%
-		\wd\qr@black=\dimen@
-		\dp\qr@black=\z@
-		\qr@for \qr@a=\z@ to\qr@num@modules by\@ne{%
-			\hbox{%
-				\qr@for \qr@b=\z@ to\qr@num@modules by\@ne{%
-					\copy\qr@masked\qr@a\qr@b
-					\ifvoid5 \else\copy5 \fi
-				}%
-			}%
-		}%
-	}%
-}
 
 \qr@make@matrix\qr@module{qr@m@}
 \qr@make@matrix\qr@maskedi{qr@M1@}
@@ -1594,43 +1539,7 @@
 	\fi
 }
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Create a QR code
-%
-% \qrcode[options]{str}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand\qrcode[2][]{%
-	\begingroup
-	\setkeys{qr}{#1}%
-	\edef\qr@msg{\detokenize{#2}}%
-	\qr@analyze@msg
-	\qr@select@version
-	\ifnum\qr@ver=\z@
-		\PackageError{qr}%
-			{String length \number\qr@len\space too long for
-			\qr@mode-mode\MessageBreak at error compression level \qr@ecl}{}%
-	\fi
-	\ifx\qr@ecl\relax
-		\PackageError{qr}%
-			{String length \number\qr@len\space too long
-			for \qr@mode-mode\MessageBreak for version \number\qr@ver}{}%
-	\fi
-	\qr@set@parameters
-	\qr@encode@msg
-	\qr@compute@ecc
-	\ifqr@dbg@interleave \qr@dump@interleaved@data \fi
-	% Construct matrix.
-	\chardef\qr@num@modules=\numexpr\qr@ver*4+17\relax
-	% Clear modules.
-	\let\qr@current@matrix\qr@module
-	\qr@foreach@module{\qr@module@set\qr@gf@a\qr@gf@b\qr@blank}%
-	\qr@add@function@patterns
-	\qr@add@data@modules
-	\qr@mask@data
-	\let\qr@current@matrix\qr@masked
-	\qr@add@format
-	\qr@add@version
-	% Draw.
+\newcommand*\qr@draw{%
 	\leavevmode
 	\vbox{%
 		\offinterlineskip
@@ -1650,12 +1559,58 @@
 			}%
 		}%
 	}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create a QR code
+%
+% \qrcode[options]{str}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\qrcode[2][]{%
+	\begingroup
+	\setkeys{qr}{#1}%
+	\edef\qr@msg{\detokenize{#2}}%
+	\qr@time\qr@analyze@msg
+	\qr@time\qr@select@version
+	\ifnum\qr@ver=\z@
+		\PackageError{qr}%
+			{String length \number\qr@len\space too long for
+			\qr@mode-mode\MessageBreak at error compression level \qr@ecl}{}%
+	\fi
+	\ifx\qr@ecl\relax
+		\PackageError{qr}%
+			{String length \number\qr@len\space too long
+			for \qr@mode-mode\MessageBreak for version \number\qr@ver}{}%
+	\fi
+	\qr@time\qr@set@parameters
+	\qr@time\qr@encode@msg
+	\qr@time\qr@compute@ecc
+	\ifqr@dbg@interleave \qr@dump@interleaved@data \fi
+	% Construct matrix.
+	\chardef\qr@num@modules=\numexpr\qr@ver*4+17\relax
+	% Clear modules.
+	\let\qr@current@matrix\qr@module
+	\qr@time{\qr@foreach@module{\qr@module@set\qr@gf@a\qr@gf@b\qr@blank}}%
+	\qr@time\qr@add@function@patterns
+	\qr@time\qr@add@data@modules
+	\qr@time\qr@mask@data
+	\let\qr@current@matrix\qr@masked
+	\qr@time\qr@add@format
+	\qr@time\qr@add@version
+	\qr@time\qr@draw
 	\endgroup
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Debugging.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\qr@time[1]{%
+	\pdfresettimer
+	#1%
+	\count@=\pdfelapsedtime
+	\message{Timing \detokenize{#1}: \the\count@^^J}%
+}
+
 \newcommand*\qr@dump@data{%
 	\qr@reset@data@ptr
 	\loop\ifnum\qr@grp<\thr@@

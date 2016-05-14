@@ -3,9 +3,8 @@
   [2016/04/20 v1.0 Construct QR codes]
 
 \RequirePackage{etoolbox}
-\RequirePackage{trace}
 \RequirePackage{xkeyval}
-\RequirePackage{xcolor}
+\AtBeginDocument{\RequirePackage{xcolor}}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Check if a value is in range
@@ -35,8 +34,8 @@
 	\fi
 }
 
-% Normal options.
-\define@cmdkey{qr}[qr@]{width}{}
+% Common options.
+\define@cmdkeys{qr}[qr@]{width,overlap,darkcolor,lightcolor,quietcolor}
 \let\KV@qr@height=\KV@qr@width % Alias.
 \define@cmdkey{qr}[qr@requested@]{version}{%
 	\qr@star@or@range\qr@requested@version\@ne{40}%
@@ -51,7 +50,7 @@
 \define@choicekey+{qr}{level}[\qr@requested@ecl\qr@requested@ecl@nr]{*,L,M,Q,H}{}
 	{\PackageError{qr}{Requested error correction level `#1' invalid.\MessageBreak
 	                   Valid values: L, M, Q, H, or *}{}}
-\define@cmdkeys{qr}[qr@]{darkcolor,lightcolor}
+\define@boolkey{qr}[qr@]{quietzone}[true]{}
 
 % Uncommon options.
 \define@cmdkey{qr}[qr@requested@]{mask}{%
@@ -69,12 +68,19 @@
 	\let\ifqr@dbg@ecc=\ifqr@dbg@all
 	\let\ifqr@dbg@interleave=\ifqr@dbg@all
 }
-\define@boolkeys{qr@dbg}[qr@dbg@]{data,ecc,interleave}[true]
+\define@boolkeys{qr@dbg}[qr@dbg@]{data,ecc,interleave,timing,parameters}[true]
 \define@boolkey{qr@dbg}[qr@dbg@]{all}[true]{\qr@set@debugging}
 \define@key{qr}{debug}{\setkeys{qr@dbg}{#1}}
 
-% Preset keys.
-\presetkeys{qr}{width=2cm,version=*,mode=*,level=*,mask=*,darkcolor=.,lightcolor=white}{}
+\savekeys{qr}{darkcolor,lightcolor}
+% Initial key values. Don't use \presetkeys since they will override package
+% keys.
+\setkeys{qr}{width=2cm,overlap=.5pt,version=*,mode=*,level=*,mask=*,
+             darkcolor=.,lightcolor=white}
+\presetkeys{qr}{}{quietcolor=\usevalue{lightcolor}}
+
+% Package options.
+\ProcessOptionsX<qr>\relax
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \newcount\qr@gf@a
@@ -461,8 +467,6 @@
 	\else
 		\let\qr@mode=\qr@requested@mode
 	\fi\fi
-	\message{String length: \number\qr@len^^J}%
-	\message{QR mode: \qr@mode^^J}%
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -570,7 +574,6 @@
 		\chardef\qr@blks@per@groupi=##3\relax
 		\chardef\qr@words@per@blki=##4\relax
 	}%
-	\message{QR version: \number\qr@ver-\qr@ecl^^J}%
 	\ifcase\qr@ver
 	\or\qr@v{19 7 1 19}{16 10 1 16}{13 13 1 13}{9 17 1 9}% 1
 	\or\qr@v{34 10 1 34}{28 16 1 28}{22 22 1 22}{16 28 1 16}% 2
@@ -625,17 +628,19 @@
 	\fi
 	\chardef\qr@total@blks=\numexpr\qr@blks@per@groupi+\qr@blks@per@groupii\relax
 	\mathchardef\qr@total@ecc@words=\numexpr\qr@total@blks*\qr@ecc@words@per@blk\relax
-	\dbg\qr@total@data@words
-	\dbg\qr@total@ecc@words
-	\dbg\qr@ecc@words@per@blk
-	\dbg\qr@blks@per@groupi
-	\dbg\qr@words@per@blki
-	\dbg\qr@blks@per@groupii
-	\dbg\qr@words@per@blkii
-	\dbg\qr@total@blks
 	\qr@reset@data@ptr
+	\ifqr@dbg@parameters
+		\qr@dbg\qr@total@data@words
+		\qr@dbg\qr@total@ecc@words
+		\qr@dbg\qr@ecc@words@per@blk
+		\qr@dbg\qr@blks@per@groupi
+		\qr@dbg\qr@words@per@blki
+		\qr@dbg\qr@blks@per@groupii
+		\qr@dbg\qr@words@per@blkii
+		\qr@dbg\qr@total@blks
+	\fi
 }
-\newcommand*\dbg[1]{\message{\string#1=\number#1^^J}}
+\newcommand*\qr@dbg[1]{\message{\string#1=\number#1^^J}}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % QR message encoding
@@ -1465,7 +1470,7 @@
 		}%
 		\qr@eval@color@change\qr@a\qr@gf@a
 	}%
-	\message{Mask #1 score: \number\qr@gf@r^^J}%
+	\ifqr@dbg@parameters \message{Mask #1 score: \number\qr@gf@r^^J}\fi
 	\ifnum\qr@gf@r<\qr@gf@n
 		\qr@gf@n=\qr@gf@r
 		\chardef\qr@mask@pattern=#1\relax
@@ -1495,7 +1500,7 @@
 	\else
 		\qr@try@mask\qr@requested@mask
 	\fi
-	\message{Using mask \number\qr@mask@pattern^^J}%
+	\ifqr@dbg@parameters \message{Using mask \number\qr@mask@pattern^^J}\fi
 	\letcs\qr@masked{qr@masked\romannumeral\qr@masked@val}%
 }
 
@@ -1618,32 +1623,76 @@
 	\fi
 }
 
+% \qr@make@module{box}{width}{height}{overlapwidth}{overlapdepth}{color}
+\newcommand*\qr@make@color@box[6]{%
+	\setbox#1=\color@hbox
+		\color{#6}%
+		\vrule\@width\dimexpr#2+#4\relax\@height#3\@depth#5%
+	\color@endbox
+	\wd#1=#2%
+	\dp#1=\z@
+}
+\newcommand*\qr@make@modules[3]{%
+	\qr@make@color@box\qr@white{#1}{#1}{#2}{#3}\qr@lightcolor
+	\qr@make@color@box\qr@black{#1}{#1}{#2}{#3}\qr@darkcolor
+}
+
 \newcommand*\qr@draw{%
 	\leavevmode
 	\vbox{%
 		\offinterlineskip
-		\dimen@=\dimexpr(\qr@width)/\qr@num@modules\relax
-		\setbox\qr@white=\color@hbox
-			\color{\qr@lightcolor}%
-			\vrule\@width\dimexpr\dimen@+1pt\relax
-			\@height\dimen@\@depth1pt
-		\color@endbox
-		\wd\qr@white=\dimen@
-		\dp\qr@white=\z@
-		\setbox\qr@black=\color@hbox
-			\color{\qr@darkcolor}%
-			\vrule\@width\dimexpr\dimen@+1pt\relax
-			      \@height\dimen@\@depth1pt
-		\color@endbox
-		\wd\qr@black=\dimen@
-		\dp\qr@black=\z@
-		\qr@for \qr@a=\z@ to\qr@num@modules by\@ne{%
+		\qr@b=\qr@num@modules
+		\ifqr@quietzone
+			\advance\qr@b8
+		\fi
+		\dimen@=\dimexpr(\qr@width)/\qr@b\relax
+		% dimen2 is the normal overlap, dimen4 is the overlap for the
+		% final row/column. When drawing the quiet zone, this is the
+		% same as dimen2.
+		\setlength{\dimen\tw@}{\qr@overlap}%
+		\dimen4=\z@
+		\qr@make@modules\dimen@{\dimen\tw@}{\dimen\tw@}%
+		\qr@a=\numexpr\qr@num@modules-\@ne\relax
+		\ifqr@quietzone
+			\begingroup
+			\dimen4=\dimen\tw@
+			\qr@make@color@box8{\qr@b\dimen@}{4\dimen@}\z@{\dimen\tw@}{\qr@quietcolor}%
+			\box8
+			\hbox\bgroup
+				\qr@make@color@box8{4\dimen@}{\qr@num@modules\dimen@}{\dimen\tw@}{\dimen\tw@}{\qr@quietcolor}%
+				\box8
+				\vbox\bgroup
+		\fi
+		% Actually draw.
+		\qr@for \qr@gf@a=\z@ to\qr@a by\@ne{%
 			\hbox{%
-				\qr@for \qr@b=\z@ to\qr@num@modules by\@ne{%
-					\copy\qr@masked\qr@a\qr@b
+				\qr@for \qr@gf@b=\z@ to\qr@a by\@ne{%
+					\copy\qr@masked\qr@gf@a\qr@gf@b
 				}%
+				% Final column.
+				\qr@make@modules\dimen@{\dimen4}{\dimen\tw@}%
+				\copy\qr@masked\qr@gf@a\qr@a
 			}%
 		}%
+		% Final row
+		\qr@make@modules\dimen@{\dimen\tw@}{\dimen4}%
+		\hbox{%
+			\qr@for \qr@gf@b=\z@ to\qr@a by\@ne{%
+				\copy\qr@masked\qr@a\qr@gf@b
+			}%
+			% Final column.
+			\qr@make@modules\dimen@{\dimen4}{\dimen4}%
+			\copy\qr@masked\qr@a\qr@a
+		}%
+		\ifqr@quietzone
+				\egroup
+				\qr@make@color@box8{4\dimen@}{\qr@num@modules\dimen@}\z@{\dimen\tw@}{\qr@quietcolor}%
+				\box8
+			\egroup
+			\qr@make@color@box8{\qr@b\dimen@}{4\dimen@}\z@\z@{\qr@quietcolor}%
+			\box8
+			\endgroup
+		\fi
 	}%
 }
 
@@ -1652,10 +1701,43 @@
 %
 % \qrcode[options]{str}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand\qrcode[2][]{%
+\newcommand\qrcode[1][]{%
 	\begingroup
 	\setkeys{qr}{#1}%
-	\edef\qr@msg{\detokenize{#2}}%
+	% Parse the message by making every character "other" except for \, {,
+	% and }.
+	\begingroup
+	\qr@for\qr@a=\z@ to\@cclvi by\@ne{%
+		\catcode\qr@a12
+	}%
+	\catcode`\\\z@
+	\catcode`\{\@ne
+	\catcode`\}\tw@
+	\qr@parse
+}
+
+\begingroup
+\catcode`\|\z@
+\catcode`\(\@ne
+\catcode`\)\tw@
+\catcode`\{12
+\catcode`\}12
+\catcode`\\12
+|gdef|qr@parse(%
+	|edef||(\)%
+	|edef|{({)%
+	|edef|}(})%
+	|afterassignment|qr@code
+	|xdef|qr@msg
+)
+|endgroup
+
+\def\qr@code{%
+	\endgroup
+	\ifqr@dbg@timing\else
+		\let\qr@time\@firstofone
+	\fi
+	%\edef\qr@msg{\detokenize{#2}}%
 	\qr@time\qr@analyze@msg
 	\qr@time\qr@select@version
 	\ifnum\qr@ver=\z@
@@ -1669,6 +1751,7 @@
 			for \qr@mode-mode\MessageBreak for version \number\qr@ver}{}%
 	\fi
 	\qr@time\qr@set@parameters
+	\message{QR Version: \number\qr@ver-\qr@ecl\space\qr@mode^^J}
 	\qr@time\qr@encode@msg
 	\qr@time\qr@compute@ecc
 	\ifqr@dbg@interleave \qr@dump@interleaved@data \fi
@@ -1683,6 +1766,7 @@
 	\qr@time\qr@add@format
 	\qr@time\qr@add@version
 	\qr@time\qr@draw
+	\global\let\qr@msg\relax
 	\endgroup
 }
 

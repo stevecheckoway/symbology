@@ -1623,7 +1623,7 @@
 	\fi
 }
 
-% \qr@make@module{box}{width}{height}{overlapwidth}{overlapdepth}{color}
+% \qr@make@color@box{box}{width}{height}{overlapwidth}{overlapdepth}{color}
 \newcommand*\qr@make@color@box[6]{%
 	\setbox#1=\color@hbox
 		\color{#6}%
@@ -1696,16 +1696,9 @@
 	}%
 }
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Create a QR code
-%
-% \qrcode[options]{str}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand\qrcode[1][]{%
-	\begingroup
-	\setkeys{qr}{#1}%
-	% Parse the message by making every character "other" except for \, {,
-	% and }.
+% \qr@parse\continue{msg}
+% Store msg in \qr@msg and then execute \continue.
+\def\qr@parse#1#2{%
 	\begingroup
 	\qr@for\qr@a=\z@ to\@cclvi by\@ne{%
 		\catcode\qr@a12
@@ -1713,7 +1706,8 @@
 	\catcode`\\\z@
 	\catcode`\{\@ne
 	\catcode`\}\tw@
-	\qr@parse
+	\catcode`\ 10
+	\qr@parsex#1#2%
 }
 
 \begingroup
@@ -1723,17 +1717,28 @@
 \catcode`\{12
 \catcode`\}12
 \catcode`\\12
-|gdef|qr@parse(%
+|gdef|qr@parsex#1#2(%
 	|edef||(\)%
 	|edef|{({)%
 	|edef|}(})%
-	|afterassignment|qr@code
-	|xdef|qr@msg
+	|aftergroup#2%
+	|afterassignment|endgroup%
+	|xdef#1%
 )
 |endgroup
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create a QR code
+%
+% \qrcode[options]{str}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\qrcode[1][]{%
+	\begingroup
+	\setkeys{qr}{#1}%
+	\qr@parse\qr@msg\qr@code
+}
+
 \def\qr@code{%
-	\endgroup
 	\ifqr@dbg@timing\else
 		\let\qr@time\@firstofone
 	\fi
@@ -1990,4 +1995,527 @@
 		\or 6 30 58 86 114 142 170 % 40
 		\fi
 	}%
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Code 39
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\codethreenine[1][]{%
+	\qr@parse\qr@msg\code@threenine
+}
+
+\def\code@threenine{%
+	\quitvmode
+	\hbox{%
+		\qr@make@color@box{`b}{\p@}{2\baselineskip}\z@\z@{black}%
+		\qr@make@color@box{`B}{2\p@}{2\baselineskip}\z@\z@{black}%
+		\qr@make@color@box{`s}{\p@}{2\baselineskip}\z@\z@{white}%
+		\qr@make@color@box{`S}{2\p@}{2\baselineskip}\z@\z@{white}%
+		\tn@draw bbBBbSsss*%
+		\unhcopy`s%
+		\qr@c\z@
+		\qr@foreach@token{%
+			\qr@a=\expandafter`\qr@token
+			\tn@encode
+			\expandafter\tn@draw\tn@encoded\qr@token
+			\unhcopy`s%
+		}%
+		\iftrue
+			\qr@a\qr@c
+			\divide\qr@a43
+			\multiply\qr@a-43
+			\advance\qr@a\qr@c
+			\tn@encode
+			\expandafter\tn@draw\tn@encoded{ }%
+			\unhcopy`s%
+		\fi
+		\tn@draw bbBBbSsss*%
+	}%
+}
+
+\def\tn@encode{%
+	\ifnum\qr@a=`\0%
+		\qr@a=10
+		\qr@b=\tw@
+		\qr@inrangetrue
+	\else
+	\qr@check@range\qr@a{`\1}{`\9}%
+	\ifqr@inrange
+		\advance\qr@a-`\0%
+		\qr@b=\tw@
+	\else
+	\qr@check@range\qr@a{`\A}{`\J}%
+	\ifqr@inrange
+		\advance\qr@a-`\@%
+		\qr@b=\thr@@
+	\else
+	\qr@check@range\qr@a{`\K}{`\T}%
+	\ifqr@inrange
+		\advance\qr@a-`\J%
+		\qr@b=4
+	\else
+	\qr@check@range\qr@a{`\U}{`\Z}%
+	\ifqr@inrange
+		\advance\qr@a-`\T%
+		\qr@b=\@ne
+	\else\ifnum\qr@a=`\-%
+		\qr@a=7
+		\qr@b=\@ne
+		\qr@inrangetrue
+	\else\ifnum\qr@a=`\.%
+		\qr@a=8
+		\qr@b=\@ne
+		\qr@inrangetrue
+	\else\ifnum\qr@a=`\ %
+		\qr@a=9
+		\qr@b=\@ne
+		\qr@inrangetrue
+	\else\ifnum\qr@a=`\+%
+		\qr@b=\tw@
+		\advance\qr@c41
+	\else\ifnum\qr@a=`\/%
+		\qr@b=\thr@@
+		\advance\qr@c40
+	\else\ifnum\qr@a=`\$%
+		\qr@b=4
+		\advance\qr@c39
+	\else\ifnum\qr@a=`\%%
+		\qr@b=\@ne
+		\advance\qr@c42
+	\else
+		\PackageError{qr}{Invalid character `\qr@token' for Code 39}{}%
+	\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+	\ifqr@inrange
+		\ifcase\qr@b
+		\or \advance\qr@c29 \advance\qr@c\qr@a
+		\or \ifnum\qr@a<10  \advance\qr@c\qr@a\fi
+		\or \advance\qr@c9  \advance\qr@c\qr@a
+		\or \advance\qr@c19 \advance\qr@c\qr@a
+		\fi
+	\fi
+	\edef\tn@encoded{%
+		\ifcase\qr@a
+		\or BbbbB%
+		\or bBbbB%
+		\or BBbbb%
+		\or bbBbB%
+		\or BbBbb%
+		\or bBBbb%
+		\or bbbBB%
+		\or BbbBb%
+		\or bBbBb%
+		\or bbBBb%
+		\else bbbbb%
+		\fi
+		\ifqr@inrange
+			\ifcase\qr@b
+			\or Ssss%
+			\or sSss%
+			\or ssSs%
+			\or sssS%
+			\fi
+		\else
+			\ifcase\qr@b
+			\or sSSS%
+			\or SsSS%
+			\or SSsS%
+			\or SSSs%
+			\fi
+		\fi
+	}%
+}
+
+\def\tn@draw#1#2#3#4#5#6#7#8#9{%
+	\setbox\z@\hbox{%
+		\unhcopy`#1%
+		\unhcopy`#6%
+		\unhcopy`#2%
+		\unhcopy`#7%
+		\unhcopy`#3%
+		\unhcopy`#8%
+		\unhcopy`#4%
+		\unhcopy`#9%
+		\unhcopy`#5%
+	}%
+	\tn@drawx
+}
+
+\def\tn@drawx#1{%
+	\vtop{%
+		\copy\z@
+		\nointerlineskip
+		\vskip\p@
+		\hb@xt@\wd\z@{\hss\strut#1\hss}%
+	}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Code 128
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\codecxxviii[1][]{%
+	\begingroup
+	\qr@parse\qr@msg\code@cxxviii
+}
+
+\def\code@cxxviii{%
+	\vtop{%
+		\count@\z@
+		\toks@={}%
+		\qr@c\z@
+		\def\qr@state{I}%
+		\setbox\z@=\hbox{%
+			\qr@foreach@token{%
+				\qr@a=\expandafter`\qr@token
+				\csname cote\qr@state\endcsname
+			}%
+		}%
+		\dimen@\wd\z@
+		\box\z@
+		\nointerlineskip
+		\vskip\p@
+		\hb@xt@\dimen@{\hss\qr@msg\hss}%
+	}%
+	\endgroup
+}
+
+% Initial state, everything in \toks@ 
+% \def\cote@I{%
+% 	\ifnum\count@<4
+% 		\toks@=\expandafter{\expandafter\the\expandafter\toks@\qr@token
+% 	\ifnum\qr@a<`\ %
+		
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% EAN and UPC
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\define@cmdkeys{ean}[ean@]{xwidth,height,darkcolor,lightcolor,quietcolor,font}
+\define@boolkey{ean}[ean@]{quietzone}[true]{}
+
+\setkeys{ean}{xwidth=.33mm,height=25.9mm,darkcolor=black,
+	lightcolor=white,quietcolor=white,font=\ttfamily,quietzone}
+
+\define@choicekey+{upc}{type}[\upc@type]{A,E}{}
+	{\PackageError{qr}{Requested UPC type `#1' invalid.\MessageBreak
+			   Valid values: A or E}{}}
+
+\def\ean@setup{%
+	\qr@a=\z@
+	\qr@b=\z@
+	\qr@c=\z@
+	\qr@foreach@token{%
+		\expandafter\qr@check@range\expandafter{\expandafter`\qr@token}{`0}{`9}%
+		\ifqr@inrange\else
+			\PackageError{qr}{Invalid number for \ean@type\space `\qr@token'}{}%
+		\fi
+		\advance\qr@c\@ne
+		\ifodd\qr@c
+			\advance\qr@a\qr@token\relax
+		\else
+			\advance\qr@b\qr@token\relax
+		\fi
+	}%
+	\ifodd\qr@c
+		\multiply\qr@b\thr@@
+	\else
+		\multiply\qr@a\thr@@
+	\fi
+	\advance\qr@a\qr@b
+	\qr@b\qr@a
+	\divide\qr@b10
+	\multiply\qr@b10
+	\ifnum\qr@a=\qr@b\else
+		\advance\qr@b-\qr@a
+		\advance\qr@b10
+		\PackageError{qr}{\ean@type\space check digit error.\MessageBreak
+			Expected `\number\qr@b'\space got `\qr@token'}{}%
+	\fi
+	\def\B##1{%
+		\textcolor{\ean@darkcolor}{\vrule\@height\dimen\tw@\@width##1\dimen@\@depth\dimen4 }%
+	}%
+	\def\W##1{%
+		\textcolor{\ean@lightcolor}{\vrule\@height\dimen\tw@\@width##1\dimen@\@depth\dimen4 }%
+	}%
+	\def\Q##1{%
+		\textcolor{\ean@quietcolor}{\vrule\@height\dimen\tw@\@width##1\dimen@}%
+	}%
+	\dimen@=\dimexpr\ean@xwidth\relax
+	\dimen\tw@=\dimexpr\ean@height\relax
+	\dimen4=5\dimen@
+}
+
+\def\ean@quietzone#1{%
+	\vtop{%
+		\ifean@quietzone
+			\setbox\z@=\hbox{{\color{\ean@quietcolor}\vrule\@height\dimen\tw@\@width9\dimen@}}%
+			\dimen@\wd\z@
+			\box\z@
+			\nointerlineskip
+			\vskip\p@
+			\hb@xt@\dimen@{{\ean@font{#1}}}%
+		\else
+			\hbox{}%
+			\nointerlineskip
+			\vskip\p@
+			\hbox{{\ean@font{#1}}}%
+		\fi
+	}%
+}
+
+\def\ean@lquietzone#1{\ean@quietzone{\hss#1\kern\p@}}
+\def\ean@rquietzone#1{\ean@quietzone{\kern\p@#1\hss}}
+
+\begingroup
+\let\W\relax
+\let\B\relax
+\def\ean@lsymbol#1#2#3#4{\W#1\B#2\W#3\B#4}
+\def\ean@rsymbol#1#2#3#4{\B#1\W#2\B#3\W#4}
+
+\xdef\ean@L#1{%
+	\noexpand\ifcase#1 \ean@lsymbol3211% 0
+	\noexpand\or       \ean@lsymbol2221% 1
+	\noexpand\or       \ean@lsymbol2122% 2
+	\noexpand\or       \ean@lsymbol1411% 3
+	\noexpand\or       \ean@lsymbol1132% 4
+	\noexpand\or       \ean@lsymbol1231% 5
+	\noexpand\or       \ean@lsymbol1114% 6
+	\noexpand\or       \ean@lsymbol1312% 7
+	\noexpand\or       \ean@lsymbol1213% 8
+	\noexpand\else     \ean@lsymbol3112% 9
+	\noexpand\fi
+}
+
+\xdef\ean@G#1{%
+	\noexpand\ifcase#1 \ean@lsymbol1123% 0
+	\noexpand\or       \ean@lsymbol1222% 1
+	\noexpand\or       \ean@lsymbol2212% 2
+	\noexpand\or       \ean@lsymbol1141% 3
+	\noexpand\or       \ean@lsymbol2311% 4
+	\noexpand\or       \ean@lsymbol1321% 5
+	\noexpand\or       \ean@lsymbol4111% 6
+	\noexpand\or       \ean@lsymbol2131% 7
+	\noexpand\or       \ean@lsymbol3121% 8
+	\noexpand\else     \ean@lsymbol2113% 9
+	\noexpand\fi
+}
+
+\xdef\ean@R#1{%
+	\noexpand\ifcase#1 \ean@rsymbol3211% 0
+	\noexpand\or       \ean@rsymbol2221% 1
+	\noexpand\or       \ean@rsymbol2122% 2
+	\noexpand\or       \ean@rsymbol1411% 3
+	\noexpand\or       \ean@rsymbol1132% 4
+	\noexpand\or       \ean@rsymbol1231% 5
+	\noexpand\or       \ean@rsymbol1114% 6
+	\noexpand\or       \ean@rsymbol1312% 7
+	\noexpand\or       \ean@rsymbol1213% 8
+	\noexpand\else     \ean@rsymbol3112% 9
+	\noexpand\fi
+}
+\endgroup
+
+\def\ean@group#1#2{%
+	\vtop{%
+		\edef\ean@temp{#1.#2}%
+		\dimen4=\z@
+		\setbox\z@=\hbox{%
+			\expandafter\ean@groupx\ean@temp
+		}%
+		\dimen@\wd\z@
+		\box\z@
+		\nointerlineskip
+		\vskip\p@
+		\hb@xt@\dimen@{\hss\ean@font{#2}\hss}%
+	}%
+}
+
+\def\ean@groupx#1#2.#3{%
+	\csname ean@#1\endcsname#3%
+	\ifx\relax#2\relax
+		\expandafter\@gobble
+	\else
+		\expandafter\@firstofone
+	\fi
+	{\ean@groupx#2.}%
+}
+
+\setkeys{upc}{type=A}
+\newcommand\upc[1][]{%
+	\begingroup
+	\setkeys{ean,upc}{#1}%
+	\edef\ean@type{UPC-\upc@type}%
+	\qr@parse\qr@msg\upc@code
+}
+
+\def\upc@code{%
+	\ean@setup
+	\ifnum\qr@c=12\else
+		\PackageError{qr}{\ean@type\space requires 12 digits}{}%
+	\fi
+	\expandafter\upc@split\qr@msg
+	\quitvmode
+	\hbox{\csname upc@\upc@type\endcsname}%
+	\endgroup
+}
+
+\def\upc@split#1#2#3#4#5#6{%
+	\def\upc@numsys{#1}%
+	\def\upc@left{#2#3#4#5#6}%
+	\upc@splitx
+}
+\def\upc@splitx#1#2#3#4#5#6{%
+	\def\upc@right{#1#2#3#4#5}%
+	\def\upc@check{#6}%
+}
+
+\def\upc@A{%
+	\ean@lquietzone\upc@numsys
+	\B1\W1\B1%
+	\ean@L\upc@numsys
+	\ean@group{LLLLL}\upc@left
+	\W1\B1\W1\B1\W1%
+	\ean@group{RRRRR}\upc@right
+	\ean@R\upc@check
+	\B1\W1\B1%
+	\ean@rquietzone\upc@check
+}
+
+\def\upce@error{%
+	\PackageError{qr}{UPC `\qr@msg' cannot be encoded in UPC-E}{}%
+}
+
+\def\upc@E{%
+	\qr@a=\upc@right\relax
+	\qr@b=\upc@left\relax
+	\ifnum\qr@a>999
+		\upce@error
+	\fi
+	\ifnum\qr@a>99
+		\divide\qr@b\@m
+		\multiply\qr@b-\@m
+		\advance\qr@b\upc@left\relax
+		\ifnum\z@=\qr@b
+		\else\ifnum100=\qr@b
+		\else\ifnum200=\qr@b
+		\else
+			\upce@error
+		\fi\fi\fi
+		\divide\qr@b100
+		\edef\upce@code{\expandafter\upce@ii\upc@left\number\qr@a\number\qr@b}%
+	\else\ifnum\qr@a>9
+		\divide\qr@b100
+		\multiply\qr@b-100
+		\advance\qr@b\upc@left\relax
+		\ifnum\qr@b>\z@
+			\upce@error
+		\fi
+		\edef\upce@code{\expandafter\upce@iii\upc@left\number\qr@a3}%
+	\else\ifnum\qr@a<5
+		\divide\qr@b10
+		\multiply\qr@b-10
+		\advance\qr@b\upc@left\relax
+		\ifnum\qr@b>\z@
+			\upce@error
+		\fi
+		\edef\upce@code{\expandafter\upce@iv\upc@left\number\qr@a4}%
+	\else
+		\edef\upce@code{\upc@left\number\qr@a}%
+	\fi\fi\fi
+	\ifcase\upc@numsys\relax
+		\let\ean@O\ean@L
+		\let\ean@E\ean@G
+	\or	\let\ean@O\ean@G
+		\let\ean@O\ean@L
+	\else	\upce@error
+	\fi
+	\ean@lquietzone{}%
+	\B1\W1\B1%
+	\ean@group\upce@parity\upce@code
+	\W1\B1\W1\B1\W1\B1%
+	\ean@rquietzone{}%
+}
+
+\def\upce@ii#1#2#3#4#5{#1#2}
+\def\upce@iii#1#2#3#4#5{#1#2#3}
+\def\upce@iv#1#2#3#4#5{#1#2#3#4}
+
+\def\upce@parity{%
+	\ifcase\upc@check EEEOOO% 0
+	\or               EEOEOO% 1
+	\or               EEOOEO% 2
+	\or               EEOOOE% 3
+	\or               EOEEOO% 4
+	\or               EOOEEO% 5
+	\or               EOOOEE% 6
+	\or               EOEOEO% 7
+	\or               EOEOOE% 8
+	\else             EOOEOE% 9
+	\fi
+}
+
+\newcommand\ean[1][]{%
+	\begingroup
+	\setkeys{ean}{#1}%
+	\qr@parse\qr@msg\ean@code
+}
+
+\def\ean@code{%
+	\ean@setup
+	\ifnum\qr@c=13
+	\else\ifnum\qr@c=8
+	\else
+		\PackageError{qr}{EAN requires 8 or 13 digits}{}%
+	\fi\fi
+	\quitvmode
+	\hbox{\csname ean@\romannumeral\qr@c\endcsname}%
+	\endgroup
+}
+
+\def\ean@xiii{%
+	\expandafter\ean@xiii@split\qr@msg
+	\ean@lquietzone\ean@first
+	\B1\W1\B1%
+	\ean@group\ean@xiii@parity\ean@left
+	\W1\B1\W1\B1\W1%
+	\ean@group{RRRRRR}\ean@right
+	\B1\W1\B1%
+	\ean@rquietzone>%
+}
+
+\def\ean@xiii@split#1#2#3#4#5#6#7{%
+	\def\ean@first{#1}%
+	\def\ean@left{#2#3#4#5#6#7}%
+	\ean@xiii@splitx
+}
+\def\ean@xiii@splitx#1#2#3#4#5#6{%
+	\def\ean@right{#1#2#3#4#5#6}%
+}
+
+\def\ean@xiii@parity{%
+	\ifcase\ean@first LLLLLL% 0
+	\or               LLGLGG% 1
+	\or               LLGGLG% 2
+	\or               LLGGGL% 3
+	\or               LGLLGG% 4
+	\or               LGGLLG% 5
+	\or               LGGGLL% 6
+	\or               LGLGLG% 7
+	\or               LGLGGL% 8
+	\else             LGGLGL% 9
+	\fi
+}
+
+\def\ean@viii{%
+	\expandafter\ean@viii@split\qr@msg
+	\ean@lquietzone<%
+	\B1\W1\B1%
+	\ean@group{LLLL}\ean@left
+	\W1\B1\W1\B1\W1%
+	\ean@group{RRRR}\ean@right
+	\B1\W1\B1%
+	\ean@rquietzone>%
+}
+
+\def\ean@viii@split#1#2#3#4#5#6#7#8{%
+	\def\ean@left{#1#2#3#4}%
+	\def\ean@right{#5#6#7#8}%
 }

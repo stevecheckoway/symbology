@@ -4,10 +4,10 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Code 39
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\define@cmdkeys{code39}[sy@tn@]{xwidth,height}{}
+\define@cmdkeys{code39}[sy@tn@]{xwidth,height,font}{}
 \define@boolkey{code39}[sy@tn@]{includecheck}[false]{}
 
-\setkeys{code39}{xwidth=\p@,height=2\baselineskip}
+\setkeys{code39}{xwidth=\p@,height=2\baselineskip,font=\ttfamily}
 
 \csdef{sy@code39}{%
 	\quitvmode
@@ -184,7 +184,7 @@
 		\copy\z@
 		\nointerlineskip
 		\vskip\p@
-		\hb@xt@\wd\z@{\hss\strut#1\hss}%
+		\hb@xt@\wd\z@{\hss{\sy@tn@font{\strut#1}}\hss}%
 	}%
 }
 

@@ -56,7 +56,10 @@
 \def\sy@ean@quietzone#1{%
 	\vtop{%
 		\ifsy@quietzone
-			\setbox\z@=\hbox{{\color{\sy@ean@quietcolor}\vrule\@height\dimen\tw@\@width9\dimen@}}%
+			\setbox\z@=\color@hbox
+				\color{\sy@ean@quietcolor}%
+				\vrule\@height\dimen\tw@\@width9\dimen@
+			\color@endbox
 			\dimen@\wd\z@
 			\box\z@
 			\nointerlineskip

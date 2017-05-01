@@ -1,0 +1,38 @@
+\ProvidesPackage{symbology-code128}
+  [2016/04/20 v1.0 Construct Code 128 barcodes]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Code 128
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\codecxxviii[1][]{%
+	\begingroup
+	\sy@parse\sy@msg\code@cxxviii
+}
+
+\def\code@cxxviii{%
+	\vtop{%
+		\count@\z@
+		\toks@={}%
+		\sy@c\z@
+		\def\sy@state{I}%
+		\setbox\z@=\hbox{%
+			\sy@foreach@token{%
+				\sy@a=\expandafter`\sy@token
+				\csname cote\sy@state\endcsname
+			}%
+		}%
+		\dimen@\wd\z@
+		\box\z@
+		\nointerlineskip
+		\vskip\p@
+		\hb@xt@\dimen@{\hss\sy@msg\hss}%
+	}%
+	\endgroup
+}
+
+% Initial state, everything in \toks@ 
+% \def\cote@I{%
+% 	\ifnum\count@<4
+% 		\toks@=\expandafter{\expandafter\the\expandafter\toks@\sy@token
+% 	\ifnum\sy@a<`\ %
+		

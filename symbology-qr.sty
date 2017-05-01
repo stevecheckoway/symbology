@@ -1,0 +1,1752 @@
+\ProvidesPackage{symbology-qr}
+  [2016/04/20 v1.0 Construct QR codes]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Options.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Common options.
+\define@cmdkeys{qr}[sy@qr@]{width}
+\define@cmdkey{qr}[sy@qr@requested@]{version}{%
+	\sy@star@or@range\sy@qr@requested@version\@ne{40}%
+	\ifsy@inrange\else
+		\PackageError{qr}{Requested version `#1' invalid.\MessageBreak
+				Valid values: 1-40 or *}{}%
+	\fi
+}
+\define@choicekey+{qr}{mode}[\sy@qr@requested@mode\sy@qr@requested@mode@nr]{numeric,alphanum,byte,*}{}
+	{\sy@error{Requested QR mode `#1' invalid.\MessageBreak
+		Valid values: numeric, alphanum, byte, or *}}
+\define@choicekey+{qr}{level}[\sy@qr@requested@ecl\sy@qr@requested@ecl@nr]{*,L,M,Q,H}{}
+	{\sy@error{Requested error correction level `#1' invalid.\MessageBreak
+	           Valid values: L, M, Q, H, or *}}
+
+% Uncommon options.
+\define@cmdkey{qr}[sy@qr@requested@]{mask}{%
+	\sy@star@or@range\sy@qr@requested@mask\z@7%
+	\ifsy@inrange\else
+		\PackageError{qr}{Requested mask `#1' invalid.\MessageBreak
+				Valid values: 0-7 or *}{}%
+	\fi
+}
+\define@boolkey{qr}[sy@]{strictlevel}[true]{}
+
+% Debugging options.
+\def\sy@set@debugging{%
+	\let\ifsy@dbg@data=\ifsy@dbg@all
+	\let\ifsy@dbg@ecc=\ifsy@dbg@all
+	\let\ifsy@dbg@interleave=\ifsy@dbg@all
+}
+\define@boolkeys{sy@dbg}[sy@dbg@]{data,ecc,interleave,timing,parameters}[true]
+\define@boolkey{sy@dbg}[sy@dbg@]{all}[true]{\sy@set@debugging}
+\define@key{qr}{debug}{\setkeys{sy@dbg}{#1}}
+
+% Initial key values. Don't use \presetkeys since they will override package
+% keys.
+\setkeys{qr}{width=2cm,version=*,mode=*,level=*,mask=*}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Create a QR code
+%
+% \qrcode[options]{str}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sy@qr{%
+	\ifsy@dbg@timing\else
+		\let\sy@time\@firstofone
+	\fi
+	\sy@time\sy@analyze@msg
+	\sy@time\sy@select@version
+	\ifnum\sy@ver=\z@
+		\sy@error{String length \number\sy@len\space too long for
+			  \sy@mode-mode\MessageBreak at error compression level \sy@ecl}%
+	\fi
+	\ifx\sy@ecl\relax
+		\sy@error{String length \number\sy@len\space too long
+			  for \sy@mode-mode\MessageBreak for version \number\sy@ver}%
+	\fi
+	\sy@time\sy@set@parameters
+	\message{QR Version: \number\sy@ver-\sy@ecl\space\sy@mode^^J}%
+	\sy@time\sy@encode@msg
+	\sy@time\sy@compute@ecc
+	\ifsy@dbg@interleave \sy@dump@interleaved@data \fi
+	% Construct matrix.
+	\chardef\sy@num@modules=\numexpr\sy@ver*4+17\relax
+	\sy@time\sy@zero@modules
+	\let\sy@current@matrix\sy@module
+	\sy@time\sy@add@function@patterns
+	\sy@time\sy@add@data@modules
+	\sy@time\sy@mask@data
+	\let\sy@current@matrix\sy@masked
+	\sy@time\sy@add@format
+	\sy@time\sy@add@version
+	\sy@time\sy@draw
+}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Implement the GF(256) arithmetic
+%
+% \gfadd{r}{a}{b}  sets r = a + b
+% \gfmul{r}{a}{b}  sets r = a * b
+% r=\gflog{a}     sets r = log_alpha a
+% r=\gfantilog{a} sets r = alpha^a
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand*\sy@xor@bit{%
+	\ifodd\sy@gf@a
+		\ifodd\sy@gf@b\else
+			\advance\sy@gf@r\sy@gf@n
+		\fi
+	\else
+		\ifodd\sy@gf@b
+			\advance\sy@gf@r\sy@gf@n
+		\fi
+	\fi
+	\divide\sy@gf@a\tw@
+	\divide\sy@gf@b\tw@
+	\advance\sy@gf@n\sy@gf@n
+}
+
+\newcommand*\gfadd[3]{%
+	\sy@gf@a=#2%
+	\sy@gf@b=#3%
+	\sy@gf@r=\z@
+	\sy@gf@n=\@ne
+	\sy@xor@bit
+	\sy@xor@bit
+	\sy@xor@bit
+	\sy@xor@bit
+	\sy@xor@bit
+	\sy@xor@bit
+	\sy@xor@bit
+	\sy@xor@bit
+	#1=\sy@gf@r
+}
+
+% Construct the log and antilog tables.
+\sy@a=\z@
+\sy@b=\@ne
+\loop
+	\csgchardef{gf@antilog@\number\sy@a}=\sy@b
+	\csgchardef{gf@log@\number\sy@b}=\sy@a
+	\advance\sy@a\@ne
+	% sy@b <- sy@b*2
+	\advance\sy@b\sy@b
+	% if sy@b > 255 then sy@b <- sy@b (+) 285
+	\ifnum\sy@b>\@cclv
+		\advance\sy@b-\@cclvi
+		\gfadd\sy@b\sy@b{29}%
+	\fi
+\ifnum\sy@a<\@cclv\repeat
+\csgchardef{gf@antilog@255}=\@ne
+
+\newcommand*\gflog[1]{%
+	\csname gf@log@\number#1\endcsname
+}
+
+\newcommand*\gfantilog[1]{%
+	\csname gf@antilog@\number#1\endcsname
+}
+
+\newcommand*\gfmul[3]{%
+	\sy@gf@a=#2%
+	\sy@gf@b=#3%
+	\ifnum\sy@gf@a=\z@
+		#1=\z@
+	\else \ifnum\sy@gf@b=\z@
+		#1=\z@
+	\else
+		\sy@gf@a=\gflog\sy@gf@a
+		\sy@gf@b=\gflog\sy@gf@b
+		\advance\sy@gf@a\sy@gf@b
+		\ifnum\sy@gf@a>254
+			\advance\sy@gf@a-\@cclv
+		\fi
+		#1=\gfantilog\sy@gf@a
+	\fi\fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Generator polynomials
+%
+% Given n>0, compute (x + alpha^0) * ... * (x + alpha^{n-1}), setting
+% \sy@gen@i to the coefficient of x^i for i in 0, ..., n.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\sy@make@array\qrgen{sy@gen@}
+
+\newcommand*\qrgenpoly[1]{%
+	% x + 1
+	\sy@array@set\qrgen\z@\@ne
+	\sy@for \sy@a=\z@ to#1by\@ne{%
+		\sy@b=\sy@a
+		\advance\sy@b\@ne
+		\sy@array@set\qrgen\sy@b\@ne
+		\sy@c=\gfantilog\sy@a
+		\chardef\sy@save=\sy@a % Avoid the group by saving \sy@a.
+		\sy@for \sy@a=\sy@a to\z@ by\m@ne{%
+			\gfmul\sy@b{\sy@c}{\qrgen\sy@a}%
+			\gfadd\sy@b\sy@b{\qrgen{\sy@a-\@ne}}%
+			\sy@array@set\qrgen{\sy@a}\sy@b
+		}%
+		\sy@a=\sy@save % Restore \sy@a.
+		\gfmul\sy@b{\qrgen\z@}\sy@c
+		\sy@array@set\qrgen\z@\sy@b
+	}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Polynomial remainder
+%
+% The divisor must be a monic polynomial.
+% \sy@poly@remainder\result\dividend{dividenddeg}\divisor{divisordeg}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@poly@remainder[5]{%
+	\begingroup
+	\let\sy@result#1%
+	\let\sy@dividend#2%
+	\let\sy@divisor#4%
+	% Copy x^{deg(divisor)}dividend to result
+	\sy@a=#3\relax
+	\sy@b=#5\relax
+	% for (count@ = deg(dividend); count@ >= 0; --count@)
+	%   result[count@ + deg(divisor)] = dividend[count@]
+	\sy@for \count@=\sy@a to\m@ne by\m@ne{%
+		\sy@c=\numexpr \count@+\sy@b\relax
+		\sy@array@set{\sy@result}{\sy@c}{\sy@dividend{\count@}}%
+	}%
+	% Set the next deg(divisor) coefficients to 0.
+	\sy@for \count@=\sy@b-1 to\m@ne by\m@ne{%
+		\sy@array@set{\sy@result}{\count@}{\z@}%
+	}%
+	%\sy@dump@poly\sy@result{\sy@a+\sy@b}%
+	% Perform the division.
+	% for (a=deg(dividend); a >= 0; --a)
+	%  c = result[a+deg(divisor)]
+	%  for (b=deg(divisor); b >= 0; --b)
+	%    result[a + b] = result[a + b] (+) c*divisor[b]
+	%  result[a + deg(divisor)] = undefined
+	% Since the divisor is monic, when b=deg(divisor), result[a+b]=0 and
+	% really, we're going to undefine result[a+b] anyway, so just skip
+	% that.
+	\sy@for \sy@a=\sy@a to\m@ne by\m@ne{%
+		\sy@c=\sy@result{\sy@a+\sy@b}%
+		\chardef\sy@save=\sy@b % Save \sy@b to avoid the group.
+		\sy@for \sy@b=\sy@b-\@ne to\m@ne by\m@ne{%
+			\gfmul\count@\sy@c{\sy@divisor{\sy@b}}%
+			\gfadd\count@\count@{\sy@result{\sy@a+\sy@b}}%
+			\sy@array@set{\sy@result}{\sy@a+\sy@b}{\count@}%
+		}%
+		\sy@b=\sy@save
+		% Undefine the zeroed coefficient.
+		\sy@array@unset{\sy@result}{\sy@a+\sy@b}%
+	}%
+	\endgroup
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Analyze the QR message
+%
+% Computes the length of the message and the minimum mode required to encode
+% the message. Sets \sy@len and \sy@mode.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@analyze@msg{%
+	\sy@gf@n=\z@
+	\sy@a=\@ne % Numeric.
+	\sy@b=\@ne % Alphanumeric.
+	\sy@foreach@token{%
+		\advance\sy@gf@n\@ne
+		\ifnum\sy@b=\@ne
+			\sy@c=\expandafter`\sy@token
+			\sy@check@range\sy@c{`0}{`9}%
+			\ifsy@inrange\else
+				\sy@a=\z@
+				\sy@check@range\sy@c{`A}{`Z}%
+				\ifsy@inrange
+				\else\ifnum\sy@c=`\ %
+				\else\ifnum\sy@c=`\$%
+				\else\ifnum\sy@c=`\%%
+				\else\ifnum\sy@c=`\*%
+				\else\ifnum\sy@c=`\+%
+				\else\ifnum\sy@c=`\-%
+				\else\ifnum\sy@c=`\.%
+				\else\ifnum\sy@c=`\/%
+				\else\ifnum\sy@c=`\:%
+				\else
+					\sy@b=\z@
+				\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+			\fi
+		\fi
+	}%
+	\chardef\sy@len=\sy@gf@n
+	\ifnum\sy@a=\@ne
+		\def\sy@mode{numeric}%
+		\sy@a=\z@
+	\else\ifnum\sy@b=\@ne
+		\def\sy@mode{alphanum}%
+		\sy@a=\@ne
+	\else
+		\def\sy@mode{byte}%
+		\sy@a=\tw@
+	\fi\fi
+	% If the requested mode is less than the minimum mode, it's an error.
+	\ifx\sy@qr@requested@mode\sy@star\else
+	\ifnum\sy@qr@requested@mode@nr<\sy@a
+		\PackageError{qr}{Requested mode `\sy@qr@requested@mode'
+			not sufficient to encode data.\MessageBreak
+			Mode `\sy@mode' or high necessary}{}%
+	\else
+		\let\sy@mode=\sy@qr@requested@mode
+	\fi\fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Select version.
+%
+% Select the minimum version that supports the given error correction level,
+% length, and mode.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sy@version@for@L#1 #2 #3 #4 #5.{\ifnum\sy@len<#2 \chardef\sy@ver=#1\relax\fi}%
+\def\sy@version@for@M#1 #2 #3 #4 #5.{\ifnum\sy@len<#3 \chardef\sy@ver=#1\relax\fi}%
+\def\sy@version@for@Q#1 #2 #3 #4 #5.{\ifnum\sy@len<#4 \chardef\sy@ver=#1\relax\fi}%
+\def\sy@version@for@H#1 #2 #3 #4 #5.{\ifnum\sy@len<#5 \chardef\sy@ver=#1\relax\fi}%
+\def\sy@version@for@ecl#1{%
+	\edef\sy@ecl{#1}%
+	\letcs\sy@v{sy@version@for@\sy@ecl}%
+	\csname sy@select@version@\sy@mode @mode\endcsname
+}
+
+\def\sy@ecl@in@range#1#2{%
+	% if a <= #1 && #1 <= b,
+	\ifnum\sy@a>#1\else
+	\ifnum#1>\sy@b\else
+		\def\sy@ecl{#2}%
+	\fi\fi
+}
+\def\sy@ecl@for@version@#1 #2 #3 #4 #5.{%
+	\ifnum#1=\sy@ver
+		\ifnum\sy@len<#2\relax \sy@ecl@in@range1L\fi
+		\ifnum\sy@len<#3\relax \sy@ecl@in@range2M\fi
+		\ifnum\sy@len<#4\relax \sy@ecl@in@range3Q\fi
+		\ifnum\sy@len<#5\relax \sy@ecl@in@range4H\fi
+	\fi
+}
+\def\sy@ecl@for@version{%
+	\let\sy@v=\sy@ecl@for@version@
+	\csname sy@select@version@\sy@mode @mode\endcsname
+}
+
+\newcommand*\sy@select@version{%
+	% Pick the appropriate version and ecl for the mode.
+	\chardef\sy@ver=\z@
+	\let\sy@ecl=\relax
+	\sy@a=\sy@qr@requested@ecl@nr\relax % Minimum ecl.
+	\sy@b=4 % Maximum ecl.
+	\ifx\sy@qr@requested@version\sy@star
+		% Version not requested, take the minimum version for the ecl.
+		\ifx\sy@qr@requested@ecl\sy@star
+			% Ecl not requested, try M, the "standard" level, per
+			% Annex I. If M is too high, try L.
+			\sy@version@for@ecl M%
+			\ifnum\sy@ver=\z@
+				\sy@version@for@ecl L%
+			\else
+				% Look for a higher ecl for the same version.
+				\sy@ecl@for@version
+			\fi
+		\else
+			% Ecl requested.
+			\sy@version@for@ecl \sy@qr@requested@ecl
+			\ifsy@strictlevel\else
+				\sy@ecl@for@version
+			\fi
+		\fi
+	\else
+		% Version requested.
+		\chardef\sy@ver=\sy@qr@requested@version\relax
+		% If qr@requested@ecl != * and strictlevel, be strict.
+		\ifx\sy@qr@requested@ecl\sy@star\else
+		\ifsy@strictlevel
+				\sy@b=\sy@a
+		\fi\fi
+		\sy@ecl@for@version
+	\fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Set the QR parameters.
+%
+% Sets internal parameters based on the version and error correction level.
+%   \sy@total@data@words  total number of data codewords
+%   \sy@total@ecc@words   total number of ECC codewords
+%   \sy@ecc@words@per@blk number of ECC codewords per block
+%   \sy@blks@per@groupi   number of blocks in group 1
+%   \sy@words@per@blki    number of data codwords per block in group 1
+%   \sy@blks@per@groupii  number of blocks in group 2
+%   \sy@blks@per@groupii  number of data codewords per block in group 2
+%   \sy@total@blks        total number of blocks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@set@parameters{%
+	\if L\sy@ecl
+		\def\sy@v##1##2##3##4{\sy@gf@next##1.}%
+	\else \if M\sy@ecl
+		\def\sy@v##1##2##3##4{\sy@gf@next##2.}%
+	\else \if Q\sy@ecl
+		\def\sy@v##1##2##3##4{\sy@gf@next##3.}%
+	\else \if H\sy@ecl
+		\def\sy@v##1##2##3##4{\sy@gf@next##4.}%
+	\else
+		\PackageError{qr}{Invalid error correction parameter}%
+			{Valid values are L, M, Q, and H}%
+	\fi\fi\fi\fi
+	\def\sy@gf@next##1 ##2 ##3 ##4.{%
+		\mathchardef\sy@total@data@words=##1\relax
+		\chardef\sy@ecc@words@per@blk=##2\relax
+		\chardef\sy@blks@per@groupi=##3\relax
+		\chardef\sy@words@per@blki=##4\relax
+	}%
+	\ifcase\sy@ver
+	\or\sy@v{19 7 1 19}{16 10 1 16}{13 13 1 13}{9 17 1 9}% 1
+	\or\sy@v{34 10 1 34}{28 16 1 28}{22 22 1 22}{16 28 1 16}% 2
+	\or\sy@v{55 15 1 55}{44 26 1 44}{34 18 2 17}{26 22 2 13}% 3
+	\or\sy@v{80 20 1 80}{64 18 2 32}{48 26 2 24}{36 16 4 9}% 4
+	\or\sy@v{108 26 1 108}{86 24 2 43}{62 18 2 15}{46 22 2 11}% 5
+	\or\sy@v{136 18 2 68}{108 16 4 27}{76 24 4 19}{60 28 4 15}% 6
+	\or\sy@v{156 20 2 78}{124 18 4 31}{88 18 2 14}{66 26 4 13}% 7
+	\or\sy@v{194 24 2 97}{154 22 2 38}{110 22 4 18}{86 26 4 14}% 8
+	\or\sy@v{232 30 2 116}{182 22 3 36}{132 20 4 16}{100 24 4 12}% 9
+	\or\sy@v{274 18 2 68}{216 26 4 43}{154 24 6 19}{122 28 6 15}% 10
+	\or\sy@v{324 20 4 81}{254 30 1 50}{180 28 4 22}{140 24 3 12}% 11
+	\or\sy@v{370 24 2 92}{290 22 6 36}{206 26 4 20}{158 28 7 14}% 12
+	\or\sy@v{428 26 4 107}{334 22 8 37}{244 24 8 20}{180 22 12 11}% 13
+	\or\sy@v{461 30 3 115}{365 24 4 40}{261 20 11 16}{197 24 11 12}% 14
+	\or\sy@v{523 22 5 87}{415 24 5 41}{295 30 5 24}{223 24 11 12}% 15
+	\or\sy@v{589 24 5 98}{453 28 7 45}{325 24 15 19}{253 30 3 15}% 16
+	\or\sy@v{647 28 1 107}{507 28 10 46}{367 28 1 22}{283 28 2 14}% 17
+	\or\sy@v{721 30 5 120}{563 26 9 43}{397 28 17 22}{313 28 2 14}% 18
+	\or\sy@v{795 28 3 113}{627 26 3 44}{445 26 17 21}{341 26 9 13}% 19
+	\or\sy@v{861 28 3 107}{669 26 3 41}{485 30 15 24}{385 28 15 15}% 20
+	\or\sy@v{932 28 4 116}{714 26 17 42}{512 28 17 22}{406 30 19 16}% 21
+	\or\sy@v{1006 28 2 111}{782 28 17 46}{568 30 7 24}{442 24 34 13}% 22
+	\or\sy@v{1094 30 4 121}{860 28 4 47}{614 30 11 24}{464 30 16 15}% 23
+	\or\sy@v{1174 30 6 117}{914 28 6 45}{664 30 11 24}{514 30 30 16}% 24
+	\or\sy@v{1276 26 8 106}{1000 28 8 47}{718 30 7 24}{538 30 22 15}% 25
+	\or\sy@v{1370 28 10 114}{1062 28 19 46}{754 28 28 22}{596 30 33 16}% 26
+	\or\sy@v{1468 30 8 122}{1128 28 22 45}{808 30 8 23}{628 30 12 15}% 27
+	\or\sy@v{1531 30 3 117}{1193 28 3 45}{871 30 4 24}{661 30 11 15}% 28
+	\or\sy@v{1631 30 7 116}{1267 28 21 45}{911 30 1 23}{701 30 19 15}% 29
+	\or\sy@v{1735 30 5 115}{1373 28 19 47}{985 30 15 24}{745 30 23 15}% 30
+	\or\sy@v{1843 30 13 115}{1455 28 2 46}{1033 30 42 24}{793 30 23 15}% 31
+	\or\sy@v{1955 30 17 115}{1541 28 10 46}{1115 30 10 24}{845 30 19 15}% 32
+	\or\sy@v{2071 30 17 115}{1631 28 14 46}{1171 30 29 24}{901 30 11 15}% 33
+	\or\sy@v{2191 30 13 115}{1725 28 14 46}{1231 30 44 24}{961 30 59 16}% 34
+	\or\sy@v{2306 30 12 121}{1812 28 12 47}{1286 30 39 24}{986 30 22 15}% 35
+	\or\sy@v{2434 30 6 121}{1914 28 6 47}{1354 30 46 24}{1054 30 2 15}% 36
+	\or\sy@v{2566 30 17 122}{1992 28 29 46}{1426 30 49 24}{1096 30 24 15}% 37
+	\or\sy@v{2702 30 4 122}{2102 28 13 46}{1502 30 48 24}{1142 30 42 15}% 38
+	\or\sy@v{2812 30 20 117}{2216 28 40 47}{1582 30 43 24}{1222 30 10 15}% 39
+	\or\sy@v{2956 30 19 118}{2334 28 18 47}{1666 30 34 24}{1276 30 20 15}% 40
+	\fi
+	% Compute the group 2 parameters.
+	\sy@a=\numexpr \sy@total@data@words-\sy@blks@per@groupi*\sy@words@per@blki \relax
+	\ifnum\sy@a>\z@
+		\chardef\sy@words@per@blkii=\numexpr\sy@words@per@blki+\@ne\relax
+		\divide\sy@a\sy@words@per@blkii
+		\chardef\sy@blks@per@groupii=\sy@a
+	\else
+		\chardef\sy@blks@per@groupii=\z@
+		\chardef\sy@words@per@blkii=\z@
+	\fi
+	\chardef\sy@total@blks=\numexpr\sy@blks@per@groupi+\sy@blks@per@groupii\relax
+	\mathchardef\sy@total@ecc@words=\numexpr\sy@total@blks*\sy@ecc@words@per@blk\relax
+	\sy@reset@data@ptr
+	\ifsy@dbg@parameters
+		\sy@dbg\sy@total@data@words
+		\sy@dbg\sy@total@ecc@words
+		\sy@dbg\sy@ecc@words@per@blk
+		\sy@dbg\sy@blks@per@groupi
+		\sy@dbg\sy@words@per@blki
+		\sy@dbg\sy@blks@per@groupii
+		\sy@dbg\sy@words@per@blkii
+		\sy@dbg\sy@total@blks
+	\fi
+}
+\newcommand*\sy@dbg[1]{\message{\string#1=\number#1^^J}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% QR message encoding
+%
+% The QR message is encoded based on the mode and length as a string of bits
+% (including padding bits) and then broken into 8-bit codewords (and padding
+% codewords are appended to the total size). The codewords are then broken
+% into blocks and groups.
+%
+% Any given (data) codeword can be referenced by a triple (group, block,
+% index). We maintain a pointer to the next codeword to be encoded by keeping
+% track of \sy@grp, \sy@blk, and \sy@idx as well as some additional
+% bookkeeping \sy@blks@per@group and \sy@words@per@blk as those values are
+% dependant on \sy@grp.
+%
+% \sy@grp is set to 3 once the pointer has advanced through all (data)
+% codewords.
+%
+% The error correction codewords are computed based on each block so a similar
+% pointer isn't as useful.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Reset the data pointer.
+\def\sy@reset@data@ptr{%
+	\global\chardef\sy@grp=\@ne
+	\global\chardef\sy@blk=\z@
+	\global\sy@idx=\z@
+	\global\chardef\sy@blks@per@group=\sy@blks@per@groupi
+	\global\chardef\sy@words@per@blk=\sy@words@per@blki
+}
+
+% Advance the data pointer by 1, updating all components of the triple as
+% necessary.
+\def\sy@advance@data@ptr{%
+	\ifnum\sy@grp=\thr@@
+		\PackageError{qr}{Internal error
+			\string\sy@advance@data@ptr}{}%
+	\fi
+	\global\advance\sy@idx\@ne
+	\ifnum\sy@idx=\sy@words@per@blk
+		% Move to next block.
+		\global\sy@idx=\z@
+		\count@=\numexpr\sy@blk+\@ne\relax
+		\global\chardef\sy@blk=\count@
+		\ifnum\sy@blk=\sy@blks@per@group
+			% Move to next group.
+			\global\chardef\sy@blk=\z@
+			\ifnum\sy@grp=\@ne
+				\ifnum\sy@words@per@blkii>\z@
+					\global\chardef\sy@grp=\tw@
+					\global\chardef\sy@blks@per@group=\sy@blks@per@groupii
+					\global\chardef\sy@words@per@blk=\sy@words@per@blkii
+				\else
+					\global\chardef\sy@grp=\thr@@
+					\global\chardef\sy@words@per@blk=\z@
+					\global\chardef\sy@blks@per@group=\z@
+				\fi
+			\else
+				\global\chardef\sy@grp=\thr@@
+				\global\chardef\sy@words@per@blk=\z@
+				\global\chardef\sy@blks@per@group=\z@
+			\fi
+		\fi
+	\fi
+}
+
+% Write the codeword at the current pointer and increment the pointer.
+\newcommand*\sy@append@word[1]{%
+	%\message{\number\sy@grp.\number\sy@blk.\number\sy@idx=\number#1^^J}%
+	\csgchardef{sy@msg@\number\sy@grp.\number\sy@blk.\number\sy@idx}=#1\relax
+	\sy@advance@data@ptr
+}
+
+% \sy@pow{x} is expandable to 2^x for x in 0, 1, ..., 16.
+\newcommand*\sy@pow[1]{%
+	\ifcase\numexpr#1\relax\@ne
+	\or\tw@
+	\or4
+	\or8
+	\or\sixt@@n
+	\or\@xxxii
+	\or64
+	\or128
+	\or\@cclvi
+	\or512
+	\or1024
+	\or2048
+	\or4096
+	\or8192
+	\or16384
+	\or32768
+	\or65536
+	\else\PackageError{qr}{Power too large}{}%
+	\fi
+}
+
+% QR messages are encoded as bits. The encoding depends on the mode and each
+% mode produces differt numbers of bits at a time. The interface to the
+% low-level encoding is \sy@encode@bits. Once more than 8 bits have been
+% encoded, they are stored as the next code word using \sy@append@word.
+%
+% The API for this is pretty hackish. Three count registers are used for the
+% process and cannot be used for anything else while encoding is happening.
+%   #1        The number of bits to encode.
+%   \sy@a     Holds the bits that have been encoded, but not stored.
+%   \sy@b     On input, the bits to encode; set to 0 at the end.
+%   \sy@c     The number of bits encoded (in \sy@a) but not stored.
+%   \sy@gf@a  The total number of bits encoded.
+% \sy@b can be used as desired before and after \sy@encode@bits (but must be
+% set to the appropriate value to encode before, of course) but the other
+% three must not be used (or restored if used).
+\newcommand*\sy@encode@bits[1]{%
+	% a = (a << bits) + b
+	\sy@a=\numexpr\sy@a*\sy@pow{#1}+\sy@b\relax
+	\advance\sy@gf@a#1\relax
+	\advance\sy@c#1\relax
+	\sy@encode@bits@store
+	\sy@b=\z@
+}
+
+% While \sy@c >= 8, store a codeword.
+\def\sy@encode@bits@store{%
+	\ifnum\sy@c>7
+		\sy@b=\sy@a
+		\divide\sy@b\sy@pow{\sy@c-8}%
+		\sy@append@word\sy@b
+		\sy@a=\numexpr\sy@a-\sy@pow{\sy@c-8}*\sy@b\relax
+		\advance\sy@c-8
+		\expandafter\sy@encode@bits@store
+	\fi
+}
+
+% Encode the numeric mode.
+\newcommand*\sy@encode@numeric@mode{%
+	\sy@b=\@ne % Numeric mode.
+	\sy@encode@bits{4}%
+	% Add number count.
+	\sy@b=\sy@len
+	\ifnum\sy@ver<10
+		\sy@encode@bits{10}%
+	\else\ifnum\sy@ver<27
+		\sy@encode@bits{12}%
+	\else
+		\sy@encode@bits{14}%
+	\fi\fi
+	% Encode numbers three at a time.
+	\count@=\z@
+	\sy@foreach@token{%
+		\sy@b=\numexpr10*\sy@b+\sy@token\relax
+		\advance\count@\@ne
+		\ifnum\count@=\thr@@
+			\sy@encode@bits{10}%
+			\count@=\z@
+		\fi
+	}%
+	% Encode any remaining numbers.
+	\ifcase\count@
+	\or\sy@encode@bits{4}%
+	\or\sy@encode@bits{7}%
+	\fi
+}
+
+% Encode the (misnamed) alphanumeric mode.
+\newcommand*\sy@encode@alphanum@mode{%
+	\sy@b=\tw@ % Alphanumeric mode.
+	\sy@encode@bits{4}%
+	% Add character count.
+	\sy@b=\sy@len
+	\ifnum\sy@ver<10
+		\sy@encode@bits{9}%
+	\else\ifnum\sy@ver<27
+		\sy@encode@bits{11}%
+	\else
+		\sy@encode@bits{13}%
+	\fi\fi
+	% Encode characters two at a time.
+	\count@=\z@
+	\sy@foreach@token{%
+		\sy@gf@b=\expandafter`\sy@token
+		\sy@check@range\sy@gf@b{`0}{`9}%
+		\multiply\sy@b45
+		\ifsy@inrange
+			\advance\sy@b\sy@token\relax
+		\else
+			\sy@check@range\sy@gf@b{`A}{`Z}%
+			\ifsy@inrange\advance\sy@b\numexpr\sy@gf@b-55\relax
+			\else\ifnum\sy@gf@b=`\ \advance\sy@b36
+			\else\ifnum\sy@gf@b=`\$\advance\sy@b37
+			\else\ifnum\sy@gf@b=`\%\advance\sy@b38
+			\else\ifnum\sy@gf@b=`\*\advance\sy@b39
+			\else\ifnum\sy@gf@b=`\+\advance\sy@b40
+			\else\ifnum\sy@gf@b=`\-\advance\sy@b41
+			\else\ifnum\sy@gf@b=`\.\advance\sy@b42
+			\else\ifnum\sy@gf@b=`\/\advance\sy@b43
+			\else                  \advance\sy@b44 % colon
+			\fi\fi\fi\fi\fi\fi\fi\fi\fi
+		\fi
+		\advance\count@\@ne
+		\ifnum\count@=\tw@
+			\sy@encode@bits{11}%
+			\count@=\z@
+		\fi
+	}%
+	% Encode the final character, if length is odd.
+	\ifnum\count@=\@ne
+		\sy@encode@bits{6}%
+	\fi
+}
+
+% Encode byte mode.
+\newcommand*\sy@encode@byte@mode{%
+	\sy@b=4 % Byte mode.
+	\sy@encode@bits{4}%
+	% Encode character count.
+	\sy@b=\sy@len
+	\ifnum\sy@ver<10
+		\sy@encode@bits{8}%
+	\else
+		\sy@encode@bits{16}%
+	\fi
+	% Encode bytes.
+	\sy@foreach@token{%
+		% Get the ASCII value.
+		\sy@b=\expandafter`\sy@token
+		\sy@encode@bits{8}%
+	}%
+}
+
+% Encode the QR message based on the mode. \sy@a, \sy@b, \sy@c, and \sy@gf@a
+% are used as described above. Up to four padding bits are added, then
+% additional padding bits are added to bring the total up to a multiple of 8.
+% Finally, add padding codewords (alternating 236 and 17).
+\newcommand*\sy@encode@msg{%
+	\sy@gf@a=\z@ % Total bits encoded.
+	\sy@a=\z@    % Encoded but not stored bits.
+	\sy@c=\z@    % Number of bits encoded (in \sy@a) but not stored.
+	% Encode the string based on the mode.
+	\csname sy@encode@\sy@mode @mode\endcsname
+	% Compute number of bits remaining.
+	\count@=\numexpr8*\sy@total@data@words-\sy@gf@a\relax
+	% Encode min(4,count@) 0 bits.
+	\sy@b=\z@
+	\ifnum\count@>4
+		\sy@encode@bits{4}%
+	\else
+		\sy@encode@bits\count@
+	\fi
+	% Encode enough bits to get to a multiple of 8.
+	\ifnum\sy@c>\z@
+		\count@=\numexpr8-\sy@c\relax
+		\sy@encode@bits\count@
+	\fi
+	% Now add padding words.
+	% Number of words of padding (we can use eTeX's rounding division
+	% because sy@gf@a is a multiple of 8 due to the final zero encodings
+	% above).
+	% Append 236 and 17 until the full size has been reached.
+	\sy@for \sy@a=\sy@total@data@words-\sy@gf@a/8to\@ne by-\tw@{%
+		\sy@append@word{236}%
+		\sy@append@word{17}%
+	}%
+	\ifnum\sy@a>\z@
+		\sy@append@word{236}%
+	\fi
+	\ifsy@dbg@data
+		\sy@dump@matrix{sy@msg@1.}\sy@blks@per@groupi\sy@words@per@blki
+		\sy@dump@matrix{sy@msg@2.}\sy@blks@per@groupii\sy@words@per@blkii
+	\fi
+}
+
+% Debugging.
+\newcommand\sy@dump@matrix[3]{%
+	\begingroup
+	\sy@make@matrix\sy@matrix{#1}%
+	\sy@for \sy@gf@a=\z@ to#2by\@ne{%
+		\message{#1\number\sy@gf@a\space =}%
+		\sy@for \sy@gf@b=\z@ to#3by\@ne{%
+			\message{\number\sy@matrix\sy@gf@a\sy@gf@b}%
+		}%
+		\message{^^J}%
+	}%
+	\endgroup
+}
+
+% Debugging.
+\newcommand*\sy@dump@poly[2]{%
+	\begingroup
+	\message{\string#1=(}%
+	\sy@for \sy@a=#2to\z@ by\m@ne{%
+		\message{\number#1{\sy@a}, }%
+	}%
+	\message{\number#1{\z@})^^J}%
+	\endgroup
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Compute error correcting code
+%
+% Compute the Reed--Solomon error correcting code for each block. Simply treat
+% each block as the coefficients of a polynomial (using \sy@polynomial@view)
+% and compute the polynomial remainder of division by the generator polynomial
+% over GF(256).
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@compute@ecc{%
+	% Construct the generator polynomial.
+	\qrgenpoly\sy@ecc@words@per@blk
+	\sy@for \sy@c=\@ne to\thr@@ by\@ne{%
+		% Compute the ECC for each block in group \sy@c
+		% b = degree of msg polynomial
+		\sy@b=\numexpr\csname sy@words@per@blk\romannumeral\sy@c\endcsname-\@ne\relax
+		\sy@for \sy@a=\z@ to\csname sy@blks@per@group\romannumeral\sy@c\endcsname by\@ne{%
+			\sy@polynomial@view\sy@result{sy@ecc@\number\sy@c.\number\sy@a.}{\sy@ecc@words@per@blk-\@ne}%
+			\sy@polynomial@view\sy@divisor{sy@msg@\number\sy@c.\number\sy@a.}\sy@b
+			\sy@poly@remainder
+				\sy@result
+				\sy@divisor\sy@b
+				\qrgen\sy@ecc@words@per@blk
+		}%
+	}%
+	\ifsy@dbg@ecc
+		\sy@dump@matrix{sy@ecc@1.}\sy@blks@per@groupi\sy@ecc@words@per@blk
+		\sy@dump@matrix{sy@ecc@2.}\sy@blks@per@groupii\sy@ecc@words@per@blk
+	\fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Interleaved view of codewords
+%
+% This can be used to access the idx-th msg or ecc codeword.
+% \sy@interleave{arr}{wordsPerBlki}{idx}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@interleave[3]{%
+	% Compute the column first.
+	\csname#1\expandafter\sy@interleave@column\expandafter
+		{\number\sy@div{#3}\sy@total@blks}{#2}{#3}%
+	\endcsname
+}
+
+% \sy@interleave@column{column}{wordsPerBlki}{idx}
+\def\sy@interleave@column#1#2#3{%
+	% The block number is idx-column*total@blks.
+	\expandafter\sy@interleave@blk\expandafter
+		{\number\numexpr#3-#1*\sy@total@blks\relax}{#1}{#2}{#3}%
+}
+
+% \sy@interleave@blk{block}{column}{wordsPerBlki}{idx}
+\def\sy@interleave@blk#1#2#3#4{%
+	\ifnum#2=\numexpr#3\relax
+		% This must be the final column and since the column number is
+		% the number of words per block in group 1, this must be in
+		% group 2. Thus the block number is actually block.
+		2.#1.#2%
+	\else
+		% Either this is not the final column or all groups have the
+		% same number of words per block.
+		\ifnum#1<\sy@blks@per@groupi
+			% Group 1.
+			1.#1.#2%
+		\else
+			% Group 2.
+			2.\number\numexpr#1-\sy@blks@per@groupi\relax.#2%
+		\fi
+	\fi
+}
+
+% eTeX's \numexpr ... \relax rounds division! Compensate for that. Both
+% \sy@div and \sy@mod require positive integers.
+\def\sy@div#1#2{%
+	\expandafter\sy@divx\expandafter
+	{\number\numexpr#1\expandafter\relax\expandafter}\expandafter
+	{\number\numexpr#2\relax}%
+}
+\def\sy@divx#1#2{%
+	\expandafter\sy@divy\expandafter{\number\numexpr#1/#2\relax}{#1}{#2}%
+}
+\def\sy@divy#1#2#3{%
+	\numexpr#1
+	\ifnum#2<\numexpr#1*#3\relax
+		-\@ne
+	\fi
+	\relax
+}
+
+\def\sy@mod#1#2{%
+	\expandafter\sy@modx\expandafter
+	{\the\numexpr#1\expandafter\relax\expandafter}\expandafter
+	{\the\numexpr#2\relax}%
+}
+\def\sy@modx#1#2{\numexpr#1-#2*\sy@divx{#1}{#2}\relax}
+
+\def\sy@modii#1{%
+	\ifodd\numexpr#1\relax
+		\expandafter\@ne
+	\else
+		\expandafter\z@
+	\fi
+}
+
+\def\sy@modiii#1{\sy@mod{#1}\thr@@}
+
+\sy@make@matrix\sy@module{sy@m@}
+\sy@make@matrix\sy@maskedi{sy@M1@}
+\sy@make@matrix\sy@maskedii{sy@M2@}
+
+\def\sy@module@set{\sy@matrix@set\sy@current@matrix}
+
+\chardef\sy@white=\z@
+\chardef\sy@black=\@ne
+\chardef\sy@function@white=\tw@
+\chardef\sy@function@black=\thr@@
+\chardef\sy@blank=254
+
+% Iterate over all module values (sy@gf@a, sy@gf@b) = (row, col).
+\def\sy@foreach@module#1{%
+	\sy@for \sy@gf@a=\z@ to\sy@num@modules by\@ne{%
+		\sy@for \sy@gf@b=\z@ to\sy@num@modules by\@ne{#1}%
+	}%
+}
+
+\def\sy@zero@modules{%
+	\sy@foreach@module{%
+		% Place this in a group so that the save stack doesn't fill
+		% with useless entries.
+		\begingroup
+		\global\expandafter\let\csname sy@m@\number\sy@gf@a.\number\sy@gf@b\endcsname\sy@blank
+		\global\expandafter\let\csname sy@M1@\number\sy@gf@a.\number\sy@gf@b\endcsname\relax
+		\global\expandafter\let\csname sy@M2@\number\sy@gf@a.\number\sy@gf@b\endcsname\relax
+		\endgroup
+	}%
+}
+
+% Generic addition of modules starting at (\sy@gf@a, \sy@gf@b) and updated
+% according to \sy@v. Modules end with \relax.
+\def\sy@add@generic#1{%
+	\ifx\relax#1\else
+		\sy@module@set{\sy@gf@a}{\sy@gf@b}{#1}%
+		\sy@v
+		\expandafter\sy@add@generic
+	\fi
+}
+
+
+% Add row, increment \sy@gf@a afterword.
+\def\sy@add@row#1{%
+	%\begingroup
+	\chardef\sy@save=\sy@gf@b
+	\def\sy@v{\advance\sy@gf@b\@ne}%
+	\sy@add@generic#1\relax
+	\sy@gf@b\sy@save
+	%\endgroup
+	\advance\sy@gf@a\@ne
+}
+
+\def\sy@add@row@at#1#2{%
+	\sy@gf@a=\numexpr#1\relax
+	\sy@gf@b=\numexpr#2\relax
+	\sy@add@row
+}
+
+% Add col, increment \sy@gf@b afterword.
+\def\sy@add@col#1{%
+	%\begingroup
+	\chardef\sy@save\sy@gf@a
+	\def\sy@v{\advance\sy@gf@a\@ne}%
+	\sy@add@generic#1\relax
+	\sy@gf@a=\sy@save
+	%\endgroup
+	\advance\sy@gf@b\@ne
+}
+
+\def\sy@add@col@at#1#2{%
+	\sy@gf@a=\numexpr#1\relax
+	\sy@gf@b=\numexpr#2\relax
+	\sy@add@col
+}
+
+% Add a finder pattern with separators.
+\def\sy@add@finder#1#2{%
+	\sy@add@row@at{#1}{#2}{3333333}%
+	\sy@add@row{3222223}%
+	\sy@add@row{3233323}%
+	\sy@add@row{3233323}%
+	\sy@add@row{3233323}%
+	\sy@add@row{3222223}%
+	\sy@add@row{3333333}%
+	% Add separators.
+	\ifnum\sy@gf@a=7 % Top left or right, so add below.
+		\sy@add@row{2222222}%
+		\ifnum\sy@gf@b=\z@ % Top left.
+			\sy@add@col@at{\z@}{7}{22222222}%
+		\else % Top right.
+			\sy@add@col@at{\z@}{\sy@gf@b-\@ne}{22222222}%
+		\fi
+	\else % Bottom left.
+		\sy@add@row@at{(#1)-\@ne}{\z@}{22222222}%
+		\sy@add@col@at{\sy@gf@a}{7}{2222222}%
+	\fi
+}
+
+\def\sy@alignment@row{\afterassignment\sy@alignment@rowx\sy@gf@a=}
+\def\sy@alignment@rowx{%
+	\ifnum\sy@gf@a>\z@
+		\advance\sy@gf@a-\tw@
+		\sy@alignment@col\sy@alignments\z@
+		\expandafter\sy@alignment@row
+	\fi
+}
+
+\def\sy@alignment@col{\afterassignment\sy@alignment@colx\sy@gf@b=}%
+\def\sy@alignment@colx{%
+	\ifnum\sy@gf@b>\z@
+		\advance\sy@gf@b-\tw@
+		\ifnum\sy@module{\sy@gf@a}{\sy@gf@b}=\sy@blank
+		\ifnum\sy@module{\sy@gf@a+5}{\sy@gf@b}=\sy@blank
+		\ifnum\sy@module{\sy@gf@a}{\sy@gf@b+5}=\sy@blank
+			\sy@add@row{33333}%
+			\sy@add@row{32223}%
+			\sy@add@row{32323}%
+			\sy@add@row{32223}%
+			\sy@add@row{33333}%
+			\advance\sy@gf@a-5
+		\fi\fi\fi
+		\expandafter\sy@alignment@col
+	\fi
+}
+
+\def\sy@add@timing{%
+	\sy@for \sy@a=8 to\sy@num@modules-8by\@ne{%
+		\ifodd\sy@a
+			\sy@module@set{\sy@a}{6}{\sy@function@white}%
+			\sy@module@set{6}{\sy@a}{\sy@function@white}%
+		\else
+			\sy@module@set{\sy@a}{6}{\sy@function@black}%
+			\sy@module@set{6}{\sy@a}{\sy@function@black}%
+		\fi
+	}%
+}
+
+% Add reserved space for format and version information as well as the dark
+% module.
+\def\sy@add@reserved{%
+	% Add format reserved spaces.
+	% Top left. Write the timing module to black.
+	\sy@add@row@at{8}{\z@}{222222322}%
+	\sy@add@col@at{\z@}{8}{22222232}%
+	% Top right.
+	\sy@add@row@at{8}{\sy@num@modules-8}{22222222}%
+	% Bottom left. Include the dark module.
+	\sy@add@col@at{\sy@num@modules-8}{8}{32222222}%
+	% Add version reserved spaces for versions larger than 6.
+	\ifnum\sy@ver>6
+		\sy@add@row@at{\sy@num@modules-11}{\z@}{222222}%
+		\sy@add@row{222222}%
+		\sy@add@row{222222}%
+		\sy@add@col@at{\z@}{\sy@num@modules-11}{222222}%
+		\sy@add@col{222222}%
+		\sy@add@col{222222}%
+	\fi
+}
+
+% Add function patterns and separators
+\def\sy@add@function@patterns{%
+	%% Add Finder patterns and separators
+	\sy@add@finder\z@\z@
+	\sy@add@finder{\sy@ver*4+10}\z@
+	\sy@add@finder\z@{\sy@ver*4+10}%
+	% Add alignment patterns.
+	\sy@set@alignments
+	\sy@alignment@row\sy@alignments\z@
+	%% Add timing patterns.
+	\sy@add@timing
+	%% Add format place holders (and dark module).
+	\sy@add@reserved
+}
+
+% Add a module.
+\def\sy@add@module#1{%
+	%\message{\space\space(\number\sy@gf@a,\number\sy@gf@b)^^J}%
+	\ifnum#1>\sy@c
+		\sy@module@set{\sy@gf@a}{\sy@gf@b}{\sy@white}%
+	\else
+		\sy@module@set{\sy@gf@a}{\sy@gf@b}{\sy@black}%
+		\advance\sy@c-#1\relax
+	\fi
+	\sy@advance@module@ptr
+}
+
+% Zig zag back and forth, ignoring function modules.
+\def\sy@advance@module@ptr{%
+	\ifsy@inrange
+		\sy@inrangefalse
+		\advance\sy@gf@b\m@ne
+	\else
+		\sy@inrangetrue
+		% Move to the next row (either up or down).
+		\advance\sy@gf@a\sy@gf@n
+		\ifnum\sy@gf@a<\z@
+			\sy@gf@n=\@ne
+			\sy@gf@a=\z@
+			\advance\sy@gf@b\m@ne
+		\else\ifnum\sy@gf@a=\sy@num@modules
+			\sy@gf@n=\m@ne
+			\advance\sy@gf@a\m@ne
+			\advance\sy@gf@b\m@ne
+		\else
+			\advance\sy@gf@b\@ne
+		\fi\fi
+		% If the column is 6 (the timing pattern), move left.
+		\ifnum\sy@gf@b=6
+			\sy@gf@b=5
+		\fi
+	\fi
+	% If we moved onto a function pattern or reserved area, advance again,
+	% unless we are finished.
+	\ifnum\sy@gf@b>\m@ne
+		\ifnum\sy@module{\sy@gf@a}{\sy@gf@b}=\sy@blank\else
+			\expandafter\expandafter\expandafter
+			\sy@advance@module@ptr
+		\fi
+	\fi
+}
+
+% Add words
+\def\sy@add@words#1#2#3{%
+	\sy@for \sy@idx=\z@ to#3by\@ne{%
+		\sy@c=\sy@interleave{#1}{#2}\sy@idx
+		%\message{Word \number\sy@c\space at
+		%	(\number\sy@gf@a,\number\sy@gf@b)^^J}%
+		\sy@add@module{128}%
+		\sy@add@module{64}%
+		\sy@add@module{\@xxxii}%
+		\sy@add@module{\sixt@@n}%
+		\sy@add@module{8}%
+		\sy@add@module{4}%
+		\sy@add@module{\tw@}%
+		\sy@add@module{\@ne}%
+	}%
+}
+
+% Add the data and remainder modules.
+\def\sy@add@data@modules{%
+	% Starting coordinates.
+	\sy@gf@a=\numexpr\sy@num@modules-\@ne\relax
+	\sy@gf@b=\sy@gf@a
+	\sy@inrangetrue % On the right side of the column.
+	\sy@gf@n=\m@ne % Going up.
+	\sy@add@words{sy@msg@}\sy@words@per@blki\sy@total@data@words
+	\sy@add@words{sy@ecc@}\sy@ecc@words@per@blk\sy@total@ecc@words
+	% Remainder bits.
+	\sy@while\ifnum\sy@gf@b>\m@ne{%
+		\sy@module@set{\sy@gf@a}{\sy@gf@b}{\sy@white}%
+		\sy@advance@module@ptr
+	}\sy@repeat
+}
+
+\def\sy@eval@color@change#1#2{%
+	\count@=\numexpr#2-#1\relax
+	% Evaluation 3.
+	\ifnum\sy@c=\sy@black
+		\ifnum\count6=\count@
+		\ifnum\count4=\numexpr\thr@@*\count@\relax
+		\ifnum\count\tw@=\count@
+		\ifnum\count\z@=\count@
+			\advance\sy@gf@r40
+		\fi\fi\fi\fi
+		\count\z@=\count4
+		\count4=\count@
+	\else
+		\count\tw@=\count6
+		\count6=\count@
+	\fi
+	\ifnum\count@>4
+		\advance\sy@gf@r\numexpr\count@-\tw@
+	\fi
+	#1=#2%
+	\sy@c=\numexpr\@ne-\sy@c\relax
+}
+
+%\csdef{sy@mask@expr@0}{\sy@modii{\sy@gf@a+\sy@gf@b}}
+%\csdef{sy@mask@expr@1}{\sy@modii\sy@gf@a}
+%\csdef{sy@mask@expr@2}{\sy@modiii\sy@gf@b}
+%\csdef{sy@mask@expr@3}{\sy@modiii{\sy@gf@a+\sy@gf@b}}
+%\csdef{sy@mask@expr@4}{\sy@modii{\sy@div\sy@gf@a\tw@+\sy@div\sy@gf@b\thr@@}}
+%\csdef{sy@mask@expr@5}{\sy@modii{\sy@gf@a*\sy@gf@b}+\sy@modiii{\sy@gf@a*\sy@gf@b}}
+%\csdef{sy@mask@expr@6}{\sy@modii{\sy@modii{\sy@gf@a*\sy@gf@b}+\sy@modiii{\sy@gf@a*\sy@gf@b}}}
+%\csdef{sy@mask@expr@7}{\sy@modii{\sy@modiii{\sy@gf@a*\sy@gf@b}+\sy@modii{\sy@gf@a+\sy@gf@b}}}
+
+\csdef{sy@mask@expr@0}{%
+	\count@\sy@gf@a
+	\advance\count@\sy@gf@b
+	\sy@gf@r\ifodd\count@\@ne\else\z@\fi
+}
+\csdef{sy@mask@expr@1}{%
+	\sy@gf@r\ifodd\sy@gf@a\@ne\else\z@\fi
+}
+\csdef{sy@mask@expr@2}{%
+	\sy@gf@r\sy@gf@b
+	\divide\sy@gf@r\thr@@
+	\multiply\sy@gf@r-\thr@@
+	\advance\sy@gf@r\sy@gf@b
+}
+\csdef{sy@mask@expr@3}{%
+	\count@\sy@gf@a
+	\advance\count@\sy@gf@b
+	\sy@gf@r\count@
+	\divide\sy@gf@r\thr@@
+	\multiply\sy@gf@r-\thr@@
+	\advance\sy@gf@r\count@
+}
+\csdef{sy@mask@expr@4}{%
+	\sy@gf@r\sy@gf@a
+	\divide\sy@gf@r\tw@
+	\count@\sy@gf@b
+	\divide\count@\thr@@
+	\advance\sy@gf@r\count@
+	\sy@gf@r\ifodd\sy@gf@r\@ne\else\z@\fi
+}
+\csdef{sy@mask@expr@5}{%
+	\count@\sy@gf@a
+	\multiply\count@\sy@gf@b
+	\sy@gf@r\count@
+	\divide\sy@gf@r\thr@@
+	\multiply\sy@gf@r-\thr@@
+	\advance\sy@gf@r\count@
+	\ifodd\count@\advance\sy@gf@r\@ne\fi
+}
+\csdef{sy@mask@expr@6}{%
+	\count@\sy@gf@a
+	\multiply\count@\sy@gf@b
+	\sy@gf@r\count@
+	\divide\sy@gf@r\thr@@
+	\multiply\sy@gf@r-\thr@@
+	\advance\sy@gf@r\count@
+	\ifodd\count@\advance\sy@gf@r\@ne\fi
+	\sy@gf@r\ifodd\sy@gf@r\@ne\else\z@\fi
+}
+\csdef{sy@mask@expr@7}{%
+	\count@\sy@gf@a
+	\multiply\count@\sy@gf@b
+	\sy@gf@r\count@
+	\divide\sy@gf@r\thr@@
+	\multiply\sy@gf@r-\thr@@
+	\advance\sy@gf@r\count@
+	\advance\sy@gf@r\sy@gf@a
+	\advance\sy@gf@r\sy@gf@b
+	\sy@gf@r\ifodd\sy@gf@r\@ne\else\z@\fi
+}
+
+\def\sy@try@mask#1{%
+	\letcs\sy@mask@expr{sy@mask@expr@\number#1}%
+	\sy@foreach@module{%
+		\sy@c\sy@module\sy@gf@a\sy@gf@b
+		\ifnum\sy@c<\tw@
+			%\ifnum\numexpr\sy@mask@expr\relax=\z@
+			\sy@mask@expr
+			\ifnum\sy@gf@r=\z@
+				\sy@c-\sy@c
+				\advance\sy@c\@ne
+			\fi
+		\else
+			\sy@c\ifodd\sy@c \sy@black \else \sy@white \fi
+		\fi
+		\sy@matrix@set\sy@masked\sy@gf@a\sy@gf@b\sy@c
+	}%
+	\sy@gf@r=\z@
+	% Perform the four evaluations in two passes.
+	% Pass 1:
+	% a = number of black modules
+	% b = col, c = color
+	% \count 0, 2, 4, 6 = extents of previous four colors
+	\sy@a=\z@
+	\sy@for \sy@gf@a=\z@ to\sy@num@modules by\@ne{%
+		\sy@b=\z@
+		\sy@c=\sy@white
+		\count\z@=\z@
+		\count\tw@=\z@
+		\count4=\z@
+		\count6=\z@
+		\sy@for \sy@gf@b=\z@ to\sy@num@modules by\@ne{%
+			\count@=\sy@masked{\sy@gf@a}{\sy@gf@b}%
+			% Evaluation 4.
+			\advance\sy@a\count@
+			\ifnum\sy@c=\count@
+				% Evaluation 2.
+				\ifnum\sy@gf@a>\z@
+				\ifnum\sy@gf@b>\z@
+					\ifnum\sy@masked{\sy@gf@a-\@ne}{\sy@gf@b-\@ne}=\count@
+					\ifnum\sy@masked{\sy@gf@a-\@ne}{\sy@gf@b}=\count@
+						\advance\sy@gf@r\thr@@
+					\fi\fi
+				\fi\fi
+			\else
+				% Evaluations 1 and 3 (row).
+				\sy@eval@color@change\sy@b\sy@gf@b
+			\fi
+		}%
+		\sy@eval@color@change\sy@b\sy@gf@b
+	}%
+	% Evaluation 4.
+	% 0 <= 5*a <= 100*black/total < 5*(a+1) <= 100
+	% 0 <= a <= 20*black/total < a+1 <= 20
+	\multiply\sy@a20
+	\divide\sy@a\numexpr\sy@num@modules*\sy@num@modules\relax
+	\sy@b=\numexpr\sy@a+\@ne\relax
+	\advance\sy@a-10
+	\ifnum\sy@a<\z@ \sy@a=-\sy@a \fi
+	\advance\sy@b-10
+	\ifnum\sy@b<\z@ \sy@a=-\sy@b \fi
+	\advance\sy@gf@r\numexpr10*\ifnum\sy@a<\sy@b \sy@a \else \sy@b \fi\relax
+	% Pass 2:
+	% The outer loop moves over columns and the inner loop over rows (the
+	% opposite of pass 1).
+	% a = row, c = col
+	% \count 0, 2, 4, 6 = extents of previous four colors
+	\sy@for \sy@gf@b=\z@ to\sy@num@modules by\@ne{%
+		\sy@a=\z@
+		\sy@c=\sy@white
+		\count\z@=\z@
+		\count\tw@=\z@
+		\count4=\z@
+		\count6=\z@
+		\sy@for \sy@gf@a=\z@ to\sy@num@modules by\@ne{%
+			% Evaluations 1 and 3 (col)
+			\ifnum\sy@c=\sy@masked{\sy@gf@a}{\sy@gf@b}\else
+				\sy@eval@color@change\sy@a\sy@gf@a
+			\fi
+		}%
+		\sy@eval@color@change\sy@a\sy@gf@a
+	}%
+	\ifsy@dbg@parameters \message{Mask #1 score: \number\sy@gf@r^^J}\fi
+	\ifnum\sy@gf@r<\sy@gf@n
+		\sy@gf@n=\sy@gf@r
+		\chardef\sy@mask@pattern=#1\relax
+		\ifnum\sy@masked@val=\tw@
+			\let\sy@masked\sy@maskedii
+			\chardef\sy@masked@val=\@ne
+		\else
+			\let\sy@masked\sy@maskedi
+			\chardef\sy@masked@val=\tw@
+		\fi
+	\fi
+}
+
+\def\sy@mask@data{%
+	\chardef\sy@masked@val=\tw@
+	\let\sy@masked\sy@maskedi
+	\sy@gf@n="3FFFFFFF
+	\ifx\sy@qr@requested@mask\sy@star
+		\sy@try@mask0%
+		\sy@try@mask1%
+		\sy@try@mask2%
+		\sy@try@mask3%
+		\sy@try@mask4%
+		\sy@try@mask5%
+		\sy@try@mask6%
+		\sy@try@mask7%
+	\else
+		\sy@try@mask\sy@qr@requested@mask
+	\fi
+	\ifsy@dbg@parameters \message{Using mask \number\sy@mask@pattern^^J}\fi
+	\letcs\sy@masked{sy@masked\romannumeral\sy@masked@val}%
+}
+
+% Format bits 14:8
+\def\sy@format@high#1#2#3#4#5#6#7{%
+	\sy@add@row@at{8}{\z@}{#1#2#3#4#5#6\sy@black#7}%
+	\sy@add@col@at{\sy@num@modules-7}{8}{#7#6#5#4#3#2#1}%
+	\sy@format@low
+}
+
+% Format bits 7:0
+\def\sy@format@low#1#2#3#4#5#6#7#8{%
+	\sy@add@row@at{8}{\sy@num@modules-8}{#1#2#3#4#5#6#7#8}%
+	\sy@add@col@at{\z@}{8}{#8#7#6#5#4#3\sy@black#2#1}%
+}
+
+\def\sy@add@format{%
+	\if      L\sy@ecl \sy@a=8
+	\else\if M\sy@ecl \sy@a=\z@
+	\else\if Q\sy@ecl \sy@a=24
+	\else             \sy@a=16
+	\fi\fi\fi
+	\advance\sy@a\sy@mask@pattern
+	\expandafter\sy@format@high
+	\ifcase\sy@a 101010000010010%
+	\or          101000100100101%
+	\or          101111001111100%
+	\or          101101101001011%
+	\or          100010111111001%
+	\or          100000011001110%
+	\or          100111110010111%
+	\or          100101010100000%
+	\or          111011111000100%
+	\or          111001011110011%
+	\or          111110110101010%
+	\or          111100010011101%
+	\or          110011000101111%
+	\or          110001100011000%
+	\or          110110001000001%
+	\or          110100101110110%
+	\or          001011010001001%
+	\or          001001110111110%
+	\or          001110011100111%
+	\or          001100111010000%
+	\or          000011101100010%
+	\or          000001001010101%
+	\or          000110100001100%
+	\or          000100000111011%
+	\or          011010101011111%
+	\or          011000001101000%
+	\or          011111100110001%
+	\or          011101000000110%
+	\or          010010010110100%
+	\or          010000110000011%
+	\or          010111011011010%
+	\or          010101111101101%
+	\fi
+}
+
+% Version bits 17:9
+\def\sy@version@high#1#2#3#4#5#6#7#8#9{%
+	\sy@add@row@at{\thr@@}{\sy@num@modules-11}{#9#8#7}%
+	\sy@add@row{#6#5#4}%
+	\sy@add@row{#3#2#1}%
+	\sy@add@col@at{\sy@num@modules-11}{\thr@@}{#9#8#7}%
+	\sy@add@col{#6#5#4}%
+	\sy@add@col{#3#2#1}%
+	\sy@version@low
+}
+
+% Version bits 8:0
+\def\sy@version@low#1#2#3#4#5#6#7#8#9{%
+	\sy@add@row@at{\z@}{\sy@num@modules-11}{#9#8#7}%
+	\sy@add@row{#6#5#4}%
+	\sy@add@row{#3#2#1}%
+	\sy@add@col@at{\sy@num@modules-11}{\z@}{#9#8#7}%
+	\sy@add@col{#6#5#4}%
+	\sy@add@col{#3#2#1}%
+}
+
+\def\sy@add@version{%
+	\ifnum\sy@ver>6
+		\expandafter\sy@version@high
+		\ifcase\numexpr\sy@ver-7\relax
+		    000111110010010100
+		\or 001000010110111100
+		\or 001001101010011001
+		\or 001010010011010011
+		\or 001011101111110110
+		\or 001100011101100010
+		\or 001101100001000111
+		\or 001110011000001101
+		\or 001111100100101000
+		\or 010000101101111000
+		\or 010001010001011101
+		\or 010010101000010111
+		\or 010011010100110010
+		\or 010100100110100110
+		\or 010101011010000011
+		\or 010110100011001001
+		\or 010111011111101100
+		\or 011000111011000100
+		\or 011001000111100001
+		\or 011010111110101011
+		\or 011011000010001110
+		\or 011100110000011010
+		\or 011101001100111111
+		\or 011110110101110101
+		\or 011111001001010000
+		\or 100000100111010101
+		\or 100001011011110000
+		\or 100010100010111010
+		\or 100011011110011111
+		\or 100100101100001011
+		\or 100101010000101110
+		\or 100110101001100100
+		\or 100111010101000001
+		\or 101000110001101001
+		\fi
+	\fi
+}
+
+\newcommand*\sy@make@modules[3]{%
+	\sy@make@color@box\sy@white{#1}{#1}{#2}{#3}\sy@lightcolor
+	\sy@make@color@box\sy@black{#1}{#1}{#2}{#3}\sy@darkcolor
+}
+
+\newcommand*\sy@draw{%
+	%\setbox\z@=
+	\vbox{%
+		\offinterlineskip
+		\sy@b=\sy@num@modules
+		\ifsy@quietzone
+			\advance\sy@b8
+		\fi
+		\dimen@=\dimexpr(\sy@qr@width)/\sy@b\relax
+		\sy@gf@r=\numexpr\sy@num@modules-\@ne\relax
+		% Construct four boxes. (height+depth)xwidth
+		% 0: (1+0)x1
+		% 2: (1+0)x1.5
+		% 4: (1+.5)x1
+		% 6: Box 2 overlapped with box 4
+		% All boxes have their dimensions set to (1+0)x1
+		\setbox\z@=\hbox{\vrule\@width\dimen@\@height\dimen@}%
+		\setbox\tw@=\hbox{\vrule\@width1.5\dimen@\@height\dimen@}\wd\tw@=\z@
+		\setbox4=\hbox{\vrule\@width\dimen@\@height\dimen@\@depth.5\dimen@}\dp4=\z@
+		\setbox6=\hbox{\copy\tw@\copy4}%
+		\wd\tw@=\dimen@
+		% Construct the QR code.
+		\setbox8=\vbox{%
+			% a = color to right or -1 in the final column
+			% b = color below or -1 in the final row
+			% c = current color
+			\sy@for \sy@gf@a=\z@ to\sy@num@modules by\@ne{%
+				\sy@a=\sy@masked\sy@gf@a\z@
+				\hbox\bgroup
+				\sy@for \sy@gf@b=\z@ to\sy@num@modules by\@ne{%
+					\sy@c=\sy@a
+					\sy@a=\ifnum\sy@gf@b=\sy@gf@r\m@ne\else\sy@masked\sy@gf@a{\sy@gf@b+\@ne}\fi
+					\sy@b=\ifnum\sy@gf@a=\sy@gf@r\m@ne\else\sy@masked{\sy@gf@a+\@ne}\sy@gf@b\fi
+					% Set \count@ to 0, 2, 4, or 6.
+					\count@=\z@
+					\ifnum\sy@c=\sy@a \advance\count@\tw@ \fi
+					\ifnum\sy@c=\sy@b \advance\count@4 \fi
+					\begingroup
+					\ifodd\sy@c
+						\color{\sy@darkcolor}%
+					\else
+						\color{\sy@lightcolor}%
+					\fi
+					\copy\count@
+					\endgroup
+				}%
+				\egroup
+			}%
+		}%
+		\ifsy@quietzone
+			% Draw the quiet zone in the apropriate color.
+			\setbox\z@=\color@hbox
+				\color{\sy@quietcolor}%
+				\vrule\@width\sy@qr@width\@height\z@\@depth\sy@qr@width
+			\color@endbox
+			\dp\z@=\z@
+			\box\z@
+			\kern4\dimen@
+			\moveright4\dimen@\box8
+			\kern4\dimen@
+		\else
+			\unvbox8
+		\fi
+	}%
+	%\showboxdepth=10
+	%\showboxbreadth=1000
+	%\showbox0
+	%\box0
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Debugging.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@time[1]{%
+	\pdfresettimer
+	#1%
+	\count@=\pdfelapsedtime
+	\message{Timing \detokenize{#1}: \the\count@^^J}%
+}
+
+\newcommand*\sy@dump@data{%
+	\sy@reset@data@ptr
+	\loop\ifnum\sy@grp<\thr@@
+		\number\csname sy@msg@\number\sy@grp.\number\sy@blk.\number\sy@idx\endcsname
+		\sy@advance@data@ptr
+		\
+	\repeat
+}
+
+\newcommand*\sy@dump@interleaved@data{%
+	\message{Interleaved data:^^J}%
+	\sy@idx=\z@
+	\loop\ifnum\sy@idx<\sy@total@data@words
+		\message{\number\sy@interleave{sy@msg@}\sy@words@per@blki\sy@idx}%
+		\advance\sy@idx\@ne
+	\repeat
+	\message{^^JInterleaved ecc:^^J}%
+	\sy@idx=\z@
+	\loop\ifnum\sy@idx<\sy@total@ecc@words
+		\message{\number\sy@interleave{sy@ecc@}\sy@ecc@words@per@blk\sy@idx}%
+		\advance\sy@idx\@ne
+	\repeat
+	\message{^^J}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Table-generated code for QR version
+%
+% Select the minimal QR version for the mode based on the error correction
+% level. \sy@v is defined to compare \sy@len to the appropriate parameter
+% (based on the correction level) and if \sy@len is smaller, set \sy@ver to
+% the first parameter.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sy@select@version@numeric@mode{%
+	\sy@v 40 7090 5597 3994 3058.%
+	\sy@v 39 6744 5314 3792 2928.%
+	\sy@v 38 6480 5040 3600 2736.%
+	\sy@v 37 6154 4776 3418 2626.%
+	\sy@v 36 5837 4589 3245 2525.%
+	\sy@v 35 5530 4344 3082 2362.%
+	\sy@v 34 5254 4135 2950 2302.%
+	\sy@v 33 4966 3910 2806 2158.%
+	\sy@v 32 4687 3694 2671 2023.%
+	\sy@v 31 4418 3487 2474 1898.%
+	\sy@v 30 4159 3290 2359 1783.%
+	\sy@v 29 3910 3036 2182 1678.%
+	\sy@v 28 3670 2858 2086 1582.%
+	\sy@v 27 3518 2702 1934 1502.%
+	\sy@v 26 3284 2545 1805 1426.%
+	\sy@v 25 3058 2396 1719 1287.%
+	\sy@v 24 2813 2189 1589 1229.%
+	\sy@v 23 2621 2060 1469 1109.%
+	\sy@v 22 2410 1873 1359 1057.%
+	\sy@v 21 2233 1709 1225 970.%
+	\sy@v 20 2062 1601 1160 920.%
+	\sy@v 19 1904 1501 1064 814.%
+	\sy@v 18 1726 1347 949 747.%
+	\sy@v 17 1549 1213 877 675.%
+	\sy@v 16 1409 1083 776 603.%
+	\sy@v 15 1251 992 704 531.%
+	\sy@v 14 1102 872 622 469.%
+	\sy@v 13 1023 797 581 428.%
+	\sy@v 12 884 692 490 375.%
+	\sy@v 11 773 605 428 332.%
+	\sy@v 10 653 514 365 289.%
+	\sy@v 9 553 433 313 236.%
+	\sy@v 8 462 366 260 203.%
+	\sy@v 7 371 294 208 155.%
+	\sy@v 6 323 256 179 140.%
+	\sy@v 5 256 203 145 107.%
+	\sy@v 4 188 150 112 83.%
+	\sy@v 3 128 102 78 59.%
+	\sy@v 2 78 64 49 35.%
+	\sy@v 1 42 35 28 18.%
+}
+
+\def\sy@select@version@alphanum@mode{%
+	\sy@v 40 4297 3392 2421 1853.%
+	\sy@v 39 4088 3221 2299 1775.%
+	\sy@v 38 3928 3055 2182 1659.%
+	\sy@v 37 3730 2895 2072 1592.%
+	\sy@v 36 3538 2781 1967 1531.%
+	\sy@v 35 3352 2633 1868 1432.%
+	\sy@v 34 3184 2507 1788 1395.%
+	\sy@v 33 3010 2370 1701 1308.%
+	\sy@v 32 2841 2239 1619 1227.%
+	\sy@v 31 2678 2114 1500 1151.%
+	\sy@v 30 2521 1995 1430 1081.%
+	\sy@v 29 2370 1840 1323 1017.%
+	\sy@v 28 2224 1733 1264 959.%
+	\sy@v 27 2133 1638 1173 911.%
+	\sy@v 26 1991 1543 1095 865.%
+	\sy@v 25 1854 1452 1042 780.%
+	\sy@v 24 1705 1327 964 745.%
+	\sy@v 23 1589 1249 891 673.%
+	\sy@v 22 1461 1135 824 641.%
+	\sy@v 21 1353 1036 743 588.%
+	\sy@v 20 1250 971 703 558.%
+	\sy@v 19 1154 910 645 494.%
+	\sy@v 18 1047 817 575 453.%
+	\sy@v 17 939 735 532 409.%
+	\sy@v 16 855 657 471 366.%
+	\sy@v 15 759 601 427 322.%
+	\sy@v 14 668 529 377 284.%
+	\sy@v 13 620 484 353 260.%
+	\sy@v 12 536 420 297 228.%
+	\sy@v 11 469 367 260 201.%
+	\sy@v 10 396 312 222 175.%
+	\sy@v 9 336 263 190 144.%
+	\sy@v 8 280 222 158 123.%
+	\sy@v 7 225 179 126 94.%
+	\sy@v 6 196 155 109 85.%
+	\sy@v 5 155 123 88 65.%
+	\sy@v 4 115 91 68 51.%
+	\sy@v 3 78 62 48 36.%
+	\sy@v 2 48 39 30 21.%
+	\sy@v 1 26 21 17 11.%
+}
+
+\def\sy@select@version@byte@mode{%
+	\sy@v 40 2954 2332 1664 1274.%
+	\sy@v 39 2810 2214 1580 1220.%
+	\sy@v 38 2700 2100 1500 1140.%
+	\sy@v 37 2564 1990 1424 1094.%
+	\sy@v 36 2432 1912 1352 1052.%
+	\sy@v 35 2304 1810 1284 984.%
+	\sy@v 34 2189 1723 1229 959.%
+	\sy@v 33 2069 1629 1169 899.%
+	\sy@v 32 1953 1539 1113 843.%
+	\sy@v 31 1841 1453 1031 791.%
+	\sy@v 30 1733 1371 983 743.%
+	\sy@v 29 1629 1265 909 699.%
+	\sy@v 28 1529 1191 869 659.%
+	\sy@v 27 1466 1126 806 626.%
+	\sy@v 26 1368 1060 752 594.%
+	\sy@v 25 1274 998 716 536.%
+	\sy@v 24 1172 912 662 512.%
+	\sy@v 23 1092 858 612 462.%
+	\sy@v 22 1004 780 566 440.%
+	\sy@v 21 930 712 510 404.%
+	\sy@v 20 859 667 483 383.%
+	\sy@v 19 793 625 443 339.%
+	\sy@v 18 719 561 395 311.%
+	\sy@v 17 645 505 365 281.%
+	\sy@v 16 587 451 323 251.%
+	\sy@v 15 521 413 293 221.%
+	\sy@v 14 459 363 259 195.%
+	\sy@v 13 426 332 242 178.%
+	\sy@v 12 368 288 204 156.%
+	\sy@v 11 322 252 178 138.%
+	\sy@v 10 272 214 152 120.%
+	\sy@v 9 231 181 131 99.%
+	\sy@v 8 193 153 109 85.%
+	\sy@v 7 155 123 87 65.%
+	\sy@v 6 135 107 75 59.%
+	\sy@v 5 107 85 61 45.%
+	\sy@v 4 79 63 47 35.%
+	\sy@v 3 54 43 33 25.%
+	\sy@v 2 33 27 21 15.%
+	\sy@v 1 18 15 12 8.%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Table-generated alignment mark cordinates.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sy@set@alignments{%
+	\edef\sy@alignments{%
+		\ifcase\sy@ver
+		\or  % 1
+		\or 6 18 % 2
+		\or 6 22 % 3
+		\or 6 26 % 4
+		\or 6 30 % 5
+		\or 6 34 % 6
+		\or 6 22 38 % 7
+		\or 6 24 42 % 8
+		\or 6 26 46 % 9
+		\or 6 28 50 % 10
+		\or 6 30 54 % 11
+		\or 6 32 58 % 12
+		\or 6 34 62 % 13
+		\or 6 26 46 66 % 14
+		\or 6 26 48 70 % 15
+		\or 6 26 50 74 % 16
+		\or 6 30 54 78 % 17
+		\or 6 30 56 82 % 18
+		\or 6 30 58 86 % 19
+		\or 6 34 62 90 % 20
+		\or 6 28 50 72 94 % 21
+		\or 6 26 50 74 98 % 22
+		\or 6 30 54 78 102 % 23
+		\or 6 28 54 80 106 % 24
+		\or 6 32 58 84 110 % 25
+		\or 6 30 58 86 114 % 26
+		\or 6 34 62 90 118 % 27
+		\or 6 26 50 74 98 122 % 28
+		\or 6 30 54 78 102 126 % 29
+		\or 6 26 52 78 104 130 % 30
+		\or 6 30 56 82 108 134 % 31
+		\or 6 34 60 86 112 138 % 32
+		\or 6 30 58 86 114 142 % 33
+		\or 6 34 62 90 118 146 % 34
+		\or 6 30 54 78 102 126 150 % 35
+		\or 6 24 50 76 102 128 154 % 36
+		\or 6 28 54 80 106 132 158 % 37
+		\or 6 32 58 84 110 136 162 % 38
+		\or 6 26 54 82 110 138 166 % 39
+		\or 6 30 58 86 114 142 170 % 40
+		\fi
+	}%
+}
+

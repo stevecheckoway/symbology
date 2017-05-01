@@ -1,0 +1,191 @@
+\ProvidesPackage{symbology-code39}
+  [2016/04/20 v1.0 Construct Code 39 barcodes]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Code 39
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\define@cmdkeys{code39}[sy@tn@]{xwidth,height}{}
+\define@boolkey{code39}[sy@tn@]{includecheck}[false]{}
+
+\setkeys{code39}{xwidth=\p@,height=2\baselineskip}
+
+\csdef{sy@code39}{%
+	\quitvmode
+	\hbox{%
+		\dimen@=\sy@tn@xwidth\relax
+		\dimen\tw@=\sy@tn@height\relax
+		\sy@make@color@box{`b}{\dimen@}{\dimen\tw@}\z@\z@{black}%
+		\sy@make@color@box{`B}{2\dimen@}{\dimen\tw@}\z@\z@{black}%
+		\sy@make@color@box{`s}{\dimen@}{\dimen\tw@}\z@\z@{white}%
+		\sy@make@color@box{`S}{2\dimen@}{\dimen\tw@}\z@\z@{white}%
+		\sy@tn@draw bbBBbSsss*%
+		\unhcopy`s%
+		\sy@c\z@
+		\sy@foreach@token{%
+			\sy@a=\expandafter`\sy@token\relax
+			\sy@tn@encode
+			\expandafter\sy@tn@draw\sy@tn@encoded\sy@token
+			\unhcopy`s%
+		}%
+		\ifsy@tn@includecheck
+			\sy@a=\sy@c
+			\divide\sy@a43
+			\multiply\sy@a-43
+			\advance\sy@a\sy@c
+			\sy@tn@encode@check
+			\expandafter\sy@tn@draw\sy@tn@encoded{ }%
+			\unhcopy`s%
+		\fi
+		\sy@tn@draw bbBBbSsss*%
+	}%
+}
+
+\def\sy@tn@encode{%
+	\ifnum\sy@a=`\0%
+		\sy@a=10
+		\sy@b=\tw@
+		\sy@inrangetrue
+	\else
+	\sy@check@range\sy@a{`\1}{`\9}%
+	\ifsy@inrange
+		\advance\sy@a-`\0%
+		\sy@b=\tw@
+	\else
+	\sy@check@range\sy@a{`\A}{`\J}%
+	\ifsy@inrange
+		\advance\sy@a-`\@%
+		\sy@b=\thr@@
+	\else
+	\sy@check@range\sy@a{`\K}{`\T}%
+	\ifsy@inrange
+		\advance\sy@a-`\J%
+		\sy@b=4
+	\else
+	\sy@check@range\sy@a{`\U}{`\Z}%
+	\ifsy@inrange
+		\advance\sy@a-`\T%
+		\sy@b=\@ne
+	\else\ifnum\sy@a=`\-%
+		\sy@a=7
+		\sy@b=\@ne
+		\sy@inrangetrue
+	\else\ifnum\sy@a=`\.%
+		\sy@a=8
+		\sy@b=\@ne
+		\sy@inrangetrue
+	\else\ifnum\sy@a=`\ %
+		\sy@a=9
+		\sy@b=\@ne
+		\sy@inrangetrue
+	\else\ifnum\sy@a=`\+%
+		\sy@b=\tw@
+		\advance\sy@c41
+	\else\ifnum\sy@a=`\/%
+		\sy@b=\thr@@
+		\advance\sy@c40
+	\else\ifnum\sy@a=`\$%
+		\sy@b=4
+		\advance\sy@c39
+	\else\ifnum\sy@a=`\%%
+		\sy@b=\@ne
+		\advance\sy@c42
+	\else
+		\sy@error{Invalid character `\sy@token'=\number\sy@a\space for Code 39}%
+	\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+	\ifsy@inrange
+		\ifcase\sy@b
+		\or \advance\sy@c29 \advance\sy@c\sy@a
+		\or \ifnum\sy@a<10  \advance\sy@c\sy@a\fi
+		\or \advance\sy@c9  \advance\sy@c\sy@a
+		\or \advance\sy@c19 \advance\sy@c\sy@a
+		\fi
+	\fi
+	\sy@tn@set@encoded
+}
+
+\def\sy@tn@encode@check{%
+	\ifnum\sy@a<39
+		\sy@inrangetrue
+		\ifnum\sy@a<10
+			\ifnum\sy@a=\z@ \sy@a=10 \fi
+			\sy@b=\tw@
+		\else\ifnum\sy@a<20
+			\advance\sy@a-9
+			\sy@b=\thr@@
+		\else\ifnum\sy@a<30
+			\advance\sy@a-19
+			\sy@b=4
+		\else
+			\advance\sy@a-29
+			\sy@b=\@ne
+		\fi\fi\fi
+	\else
+		\advance\sy@a-39
+		\ifcase\sy@a \sy@b=4
+		\or          \sy@b=\thr@@
+		\or          \sy@b=\tw@
+		\or          \sy@b=\@ne
+		\fi
+		\sy@a=11
+	\fi
+	\sy@tn@set@encoded
+}
+
+\def\sy@tn@set@encoded{%
+	\edef\sy@tn@encoded{%
+		\ifcase\sy@a
+		\or BbbbB%
+		\or bBbbB%
+		\or BBbbb%
+		\or bbBbB%
+		\or BbBbb%
+		\or bBBbb%
+		\or bbbBB%
+		\or BbbBb%
+		\or bBbBb%
+		\or bbBBb%
+		\else bbbbb%
+		\fi
+		\ifsy@inrange
+			\ifcase\sy@b
+			\or Ssss%
+			\or sSss%
+			\or ssSs%
+			\or sssS%
+			\fi
+		\else
+			\ifcase\sy@b
+			\or sSSS%
+			\or SsSS%
+			\or SSsS%
+			\or SSSs%
+			\fi
+		\fi
+	}%
+}
+
+\def\sy@tn@draw#1#2#3#4#5#6#7#8#9{%
+	\setbox\z@\hbox{%
+		\unhcopy`#1%
+		\unhcopy`#6%
+		\unhcopy`#2%
+		\unhcopy`#7%
+		\unhcopy`#3%
+		\unhcopy`#8%
+		\unhcopy`#4%
+		\unhcopy`#9%
+		\unhcopy`#5%
+	}%
+	\sy@tn@drawx
+}
+
+\def\sy@tn@drawx#1{%
+	\vtop{%
+		\copy\z@
+		\nointerlineskip
+		\vskip\p@
+		\hb@xt@\wd\z@{\hss\strut#1\hss}%
+	}%
+}
+
+

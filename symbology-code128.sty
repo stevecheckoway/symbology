@@ -10,10 +10,8 @@
 
 \csdef{sy@code128}{%
 	% XXX Check for GS1-128 application identifier and prepend to \sy@msg.
-	%\traceon
 	\sy@ote@encode
-	%\traceoff
-	%\sy@ote@draw
+	\sy@ote@draw
 }
 
 % Code 128 data can be encoded in multiple modes.
@@ -146,8 +144,10 @@
 	% Encode the data starting from the end.
 	% gf@a = index of the current character to encode.
 	% gf@b = number of encoded octets remaining (the cost).
+	% c    = checksum
 	\sy@gf@a=\sy@len
 	\sy@gf@b=\sy@gf@n
+	\sy@c=\z@
 	\message{Encoding \number\sy@len\space characters in
 	         \number\sy@gf@n\space symbols^^J}%
 	\sy@while\ifnum\sy@gf@a>\z@{%
@@ -232,18 +232,27 @@
 			\fi
 		\fi
 	}\sy@repeat
-	% Insert the start code.
-	\sy@array@set\sy@data{\z@}{103+\sy@gf@r}% START A/B/C
 	% XXX
 	\message{START \ifcase\sy@gf@r A\or B\or C\fi.^^J}%
+	% Insert the start code and update the checksum.
+	\sy@array@set\sy@data{\z@}{103+\sy@gf@r}% START A/B/C
+	\advance\sy@c \sy@gf@r % We're about to mod by 103.
+	\count@=\sy@c
+	\divide\count@ 103
+	\multiply\count@ -103
+	\advance\sy@c\count@
+	\sy@array@set\sy@data{\sy@gf@n}{\sy@c}%
+	\advance\sy@gf@n\@ne
 	\sy@ote@dump\sy@data\z@\sy@gf@n
 }
 
 % \sy@ote@insert{value}
 % Decrement \sy@gf@b and insert the value in \sy@data{\sy@gf@b}.
+% Update the checksum \sy@c.
 \def\sy@ote@insert#1{%
 	\advance\sy@gf@b \m@ne
 	\sy@array@set\sy@data{\sy@gf@b}{#1}%
+	\advance\sy@c \numexpr\sy@gf@b*(#1)\relax
 }
 
 \def\sy@ote@encodeA#1{%
@@ -257,6 +266,43 @@
 	\sy@ote@insert{#1-32}%
 }
 
+% Drawing.
+\def\sy@ote@draw{%
+	\color@hbox
+		\dimen@=\sy@ote@xwidth\relax
+		\dimen\tw@=\sy@ote@height\relax
+		\ifsy@quietzone
+			\sy@ote@bar\sy@quietcolor{10}%
+		\fi
+		\sy@for \sy@a=\z@ to\sy@gf@n by\@ne{%
+			\edef\sy@temp{\sy@ote@width{\sy@data{\sy@a}}}%
+			\expandafter\sy@ote@symbol\sy@temp
+		}%
+		% Stop pattern.
+		\sy@ote@symbol233111%
+		\sy@ote@bar\sy@darkcolor2%
+		\ifsy@quietzone
+			\sy@ote@bar{\sy@quietcolor}{10}%
+		\fi
+	\color@endbox
+}
+
+\def\sy@ote@bar#1#2{%
+	\begingroup
+	\color{#1}%
+	\vrule \@height\dimen\tw@ \@width#2\dimen@
+	\endgroup
+}
+
+\def\sy@ote@symbol#1#2#3#4#5#6{%
+	\sy@ote@bar\sy@darkcolor#1%
+	\sy@ote@bar\sy@lightcolor#2%
+	\sy@ote@bar\sy@darkcolor#3%
+	\sy@ote@bar\sy@lightcolor#4%
+	\sy@ote@bar\sy@darkcolor#5%
+	\sy@ote@bar\sy@lightcolor#6%
+}
+
 % Debugging
 \def\sy@ote@dump#1#2#3{%
 	\begingroup
@@ -266,4 +312,118 @@
 	}%
 	\message{^^J}%
 	\endgroup
+}
+
+% Table of widths.
+\def\sy@ote@width#1{
+	\ifcase\numexpr#1\relax
+	   212222% 0
+	\or222122% 1
+	\or222221% 2
+	\or121223% 3
+	\or121322% 4
+	\or131222% 5
+	\or122213% 6
+	\or122312% 7
+	\or132212% 8
+	\or221213% 9
+	\or221312% 10
+	\or231212% 11
+	\or112232% 12
+	\or122132% 13
+	\or122231% 14
+	\or113222% 15
+	\or123122% 16
+	\or123221% 17
+	\or223211% 18
+	\or221132% 19
+	\or221231% 20
+	\or213212% 21
+	\or223112% 22
+	\or312131% 23
+	\or311222% 24
+	\or321122% 25
+	\or321221% 26
+	\or312212% 27
+	\or322112% 28
+	\or322211% 29
+	\or212123% 30
+	\or212321% 31
+	\or232121% 32
+	\or111323% 33
+	\or131123% 34
+	\or131321% 35
+	\or112313% 36
+	\or132113% 37
+	\or132311% 38
+	\or211313% 39
+	\or231113% 40
+	\or231311% 41
+	\or112133% 42
+	\or112331% 43
+	\or132131% 44
+	\or113123% 45
+	\or113321% 46
+	\or133121% 47
+	\or313121% 48
+	\or211331% 49
+	\or231131% 50
+	\or213113% 51
+	\or213311% 52
+	\or213131% 53
+	\or311123% 54
+	\or311321% 55
+	\or331121% 56
+	\or312113% 57
+	\or312311% 58
+	\or332111% 59
+	\or314111% 60
+	\or221411% 61
+	\or431111% 62
+	\or111224% 63
+	\or111422% 64
+	\or121124% 65
+	\or121421% 66
+	\or141122% 67
+	\or141221% 68
+	\or112214% 69
+	\or112412% 70
+	\or122114% 71
+	\or122411% 72
+	\or142112% 73
+	\or142211% 74
+	\or241211% 75
+	\or221114% 76
+	\or413111% 77
+	\or241112% 78
+	\or134111% 79
+	\or111242% 80
+	\or121142% 81
+	\or121241% 82
+	\or114212% 83
+	\or124112% 84
+	\or124211% 85
+	\or411212% 86
+	\or421112% 87
+	\or421211% 88
+	\or212141% 89
+	\or214121% 90
+	\or412121% 91
+	\or111143% 92
+	\or111341% 93
+	\or131141% 94
+	\or114113% 95
+	\or114311% 96
+	\or411113% 97
+	\or411311% 98
+	\or113141% 99
+	\or114131% 100
+	\or311141% 101
+	\or411131% 102
+	\or211412% 103
+	\or211214% 104
+	\or211232% 105
+	\else
+		\sy@error{Invalid encoded character \number\numexpr#1\relax.^^J}%
+	\fi
 }

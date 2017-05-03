@@ -4,7 +4,7 @@
 
 \RequirePackage{etoolbox}
 \RequirePackage{xkeyval}
-\AtBeginDocument{\RequirePackage{xcolor}}
+\AtEndPreamble{\RequirePackage{xcolor}}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Check if a value is in range
@@ -27,7 +27,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \def\sy@star{*}
 \newcommand*\sy@star@or@range[3]{%
-	\ifx#1\sy@star
+	\ifx\sy@star#1\relax
 		\sy@inrangetrue
 	\else
 		\sy@check@range{#1}{#2}{#3}%
@@ -319,6 +319,45 @@
 	\global\let\sy@msg\@undefined
 	\endgroup
 }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Divison helpers.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \sy@mod\result{dividend}{divisor}
+% Set \result to dividend % divisor. Overwrites \result before it finishes
+% using the dividend and the divisor.
+% \def\sy@mod#1#2#3{%
+% 	#1=#2%
+% 	\divide#1by#3\relax
+% 	\multiply#1by-#3\relax
+% 	\advance#1by#2\relax
+% }
+
+% eTeX's \numexpr ... \relax rounds division! Compensate for that. Both
+% \sy@div and \sy@mod require positive integers.
+\def\sy@div#1#2{%
+	\expandafter\sy@divx\expandafter
+	{\number\numexpr#1\expandafter\relax\expandafter}\expandafter
+	{\number\numexpr#2\relax}%
+}
+\def\sy@divx#1#2{%
+	\expandafter\sy@divy\expandafter{\number\numexpr#1/#2\relax}{#1}{#2}%
+}
+\def\sy@divy#1#2#3{%
+	\numexpr#1
+	\ifnum#2<\numexpr#1*#3\relax
+		-\@ne
+	\fi
+	\relax
+}
+
+\def\sy@mod#1#2{%
+	\expandafter\sy@modx\expandafter
+	{\the\numexpr#1\expandafter\relax\expandafter}\expandafter
+	{\the\numexpr#2\relax}%
+}
+\def\sy@modx#1#2{\numexpr#1-#2*\sy@divx{#1}{#2}\relax}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Load the packages.

@@ -9,8 +9,8 @@
 \define@cmdkey{qr}[sy@qr@requested@]{version}{%
 	\sy@star@or@range\sy@qr@requested@version\@ne{40}%
 	\ifsy@inrange\else
-		\PackageError{qr}{Requested version `#1' invalid.\MessageBreak
-				Valid values: 1-40 or *}{}%
+		\sy@error{Requested version `#1' invalid.\MessageBreak
+			  Valid values: 1-40 or *}%
 	\fi
 }
 \define@choicekey+{qr}{mode}[\sy@qr@requested@mode\sy@qr@requested@mode@nr]{numeric,alphanum,byte,*}{}
@@ -24,8 +24,8 @@
 \define@cmdkey{qr}[sy@qr@requested@]{mask}{%
 	\sy@star@or@range\sy@qr@requested@mask\z@7%
 	\ifsy@inrange\else
-		\PackageError{qr}{Requested mask `#1' invalid.\MessageBreak
-				Valid values: 0-7 or *}{}%
+		\sy@error{Requested mask `#1' invalid.\MessageBreak
+			  Valid values: 0-7 or *}%
 	\fi
 }
 \define@boolkey{qr}[sy@]{strictlevel}[true]{}
@@ -291,9 +291,9 @@
 	% If the requested mode is less than the minimum mode, it's an error.
 	\ifx\sy@qr@requested@mode\sy@star\else
 	\ifnum\sy@qr@requested@mode@nr<\sy@a
-		\PackageError{qr}{Requested mode `\sy@qr@requested@mode'
-			not sufficient to encode data.\MessageBreak
-			Mode `\sy@mode' or high necessary}{}%
+		\sy@error{Requested mode `\sy@qr@requested@mode'
+			  not sufficient to encode data.\MessageBreak
+			  Mode `\sy@mode' or higher necessary}%
 	\else
 		\let\sy@mode=\sy@qr@requested@mode
 	\fi\fi
@@ -395,8 +395,8 @@
 	\else \if H\sy@ecl
 		\def\sy@v##1##2##3##4{\sy@gf@next##4.}%
 	\else
-		\PackageError{qr}{Invalid error correction parameter}%
-			{Valid values are L, M, Q, and H}%
+		\sy@error{Invalid error correction parameter.\MessageBreak
+			  Valid values are L, M, Q, and H}%
 	\fi\fi\fi\fi
 	\def\sy@gf@next##1 ##2 ##3 ##4.{%
 		\mathchardef\sy@total@data@words=##1\relax
@@ -506,8 +506,7 @@
 % necessary.
 \def\sy@advance@data@ptr{%
 	\ifnum\sy@grp=\thr@@
-		\PackageError{qr}{Internal error
-			\string\sy@advance@data@ptr}{}%
+		\sy@error{Internal error \string\sy@advance@data@ptr}%
 	\fi
 	\global\advance\sy@idx\@ne
 	\ifnum\sy@idx=\sy@words@per@blk
@@ -563,7 +562,7 @@
 	\or16384
 	\or32768
 	\or65536
-	\else\PackageError{qr}{Power too large}{}%
+	\else\sy@error{Power too large}%
 	\fi
 }
 
@@ -835,41 +834,6 @@
 		\fi
 	\fi
 }
-
-% eTeX's \numexpr ... \relax rounds division! Compensate for that. Both
-% \sy@div and \sy@mod require positive integers.
-\def\sy@div#1#2{%
-	\expandafter\sy@divx\expandafter
-	{\number\numexpr#1\expandafter\relax\expandafter}\expandafter
-	{\number\numexpr#2\relax}%
-}
-\def\sy@divx#1#2{%
-	\expandafter\sy@divy\expandafter{\number\numexpr#1/#2\relax}{#1}{#2}%
-}
-\def\sy@divy#1#2#3{%
-	\numexpr#1
-	\ifnum#2<\numexpr#1*#3\relax
-		-\@ne
-	\fi
-	\relax
-}
-
-\def\sy@mod#1#2{%
-	\expandafter\sy@modx\expandafter
-	{\the\numexpr#1\expandafter\relax\expandafter}\expandafter
-	{\the\numexpr#2\relax}%
-}
-\def\sy@modx#1#2{\numexpr#1-#2*\sy@divx{#1}{#2}\relax}
-
-\def\sy@modii#1{%
-	\ifodd\numexpr#1\relax
-		\expandafter\@ne
-	\else
-		\expandafter\z@
-	\fi
-}
-
-\def\sy@modiii#1{\sy@mod{#1}\thr@@}
 
 \sy@make@matrix\sy@module{sy@m@}
 \sy@make@matrix\sy@maskedi{sy@M1@}
@@ -1149,6 +1113,7 @@
 	\sy@c=\numexpr\@ne-\sy@c\relax
 }
 
+%\def\sy@modiii#1{\sy@mod{#1}\thr@@}
 %\csdef{sy@mask@expr@0}{\sy@modii{\sy@gf@a+\sy@gf@b}}
 %\csdef{sy@mask@expr@1}{\sy@modii\sy@gf@a}
 %\csdef{sy@mask@expr@2}{\sy@modiii\sy@gf@b}

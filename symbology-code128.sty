@@ -1,38 +1,269 @@
 \ProvidesPackage{symbology-code128}
-  [2016/04/20 v1.0 Construct Code 128 barcodes]
+  [2017/05/02 v1.0 Construct Code 128 barcodes]
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Code 128
+% Code 39
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand\codecxxviii[1][]{%
-	\begingroup
-	\sy@parse\sy@msg\code@cxxviii
+\define@cmdkeys{code128}[sy@ote@]{xwidth,height,font}{}
+
+\setkeys{code128}{xwidth=\p@,height=2\baselineskip,font=\ttfamily}
+
+\csdef{sy@code128}{%
+	% XXX Check for GS1-128 application identifier and prepend to \sy@msg.
+	%\traceon
+	\sy@ote@encode
+	%\traceoff
+	%\sy@ote@draw
 }
 
-\def\code@cxxviii{%
-	\vtop{%
-		\count@\z@
-		\toks@={}%
-		\sy@c\z@
-		\def\sy@state{I}%
-		\setbox\z@=\hbox{%
-			\sy@foreach@token{%
-				\sy@a=\expandafter`\sy@token
-				\csname cote\sy@state\endcsname
-			}%
-		}%
-		\dimen@\wd\z@
-		\box\z@
-		\nointerlineskip
-		\vskip\p@
-		\hb@xt@\dimen@{\hss\sy@msg\hss}%
+% Code 128 data can be encoded in multiple modes.
+% - Mode A encodes ASCII 32 (space) through 95 (_) then 0 (NUL) through 31
+%   (us).
+% - Mode B encodes ASCII 32 (space) through 127 (DEL).
+% - Mode C encodes pairs of numbers 00, 01, ..., 99.
+% Modes A and B contain SHIFT symbols which interpret the next symbol in the
+% other mode. All three modes can switch to the other modes with a single
+% symbol.
+%
+% Modes A and B can encode values in the range 128-255 by using a FNC4 symbol
+% which causes the next encoded ASCII value to be interpreted as the value +
+% 128. E.g., the value 128 can be encoded in two ways depending on the mode
+% - Mode A: [FNC4] 96
+% - Mode B: [FNC4] [SHIFT A] 96
+% whereas the value 160 can be encoded as
+% - Mode A: [FNC4] 0
+% - Mode B: [FNC4] 0
+% Two consecutive FNC4 values switch this interpretation on until the next
+% pair of FNC4. As the use of FNC4 is nonstandard, we don't both with double
+% FNC4 anywhere.
+%
+% The optimal encoding of a given string s = s_1 s_2 ... s_n can be computed
+% using dynamic programming as follows. Let cost be a 3 x (n+1) matrix such
+% that cost[mode, i] for A <= mode <= C, 0 <= i <= n is the minimal cost of
+% encoding the first i characters of s such that the last character is in the
+% given mode. cost[mode, 0] = 1 for all modes since it requires only the
+% corresponding START symbol. Otherwise, the costs can be computed as follows:
+% 
+% cost[A, i] = min_{A <= m <= C} (cost[m, i-1] + switch(m, A)) + c(A, s_i)
+% cost[B, i] = min_{A <= m <= C} (cost[m, i-1] + switch(m, B)) + c(B, s_i)
+% cost[C, i] = min_{A <= m <= C} (cost[m, i-2] + switch(m, C)) + c(C, s_{i-1}s_i)
+% 
+% where switch(m, m') is the cost of switching from mode m to mode m' (so
+% switch(m, m) = 0 and switch(m, m') = 1 for m != m') and c(X, t) is the cost
+% of encoding t in mode X. Note that cost[C, i] is defined in terms of
+% cost[m, i-2] and c(C, s_{i-1}s_i) is inf if either s_{i-1} or s_i are not
+% numbers.
+%
+% Once the full table has been filed, it's possible to work backward to
+% recover the optimal encoding.
+
+% Character cost functions for modes A and B.
+\newif\ifsy@ote@lastnumeric
+\def\sy@ote@encodeA@cost#1{%
+	\ifnum#1<96       \@ne % Encode directly
+	\else\ifnum#1<224 \tw@ % [SHIFT B] for x < 128; [FNC4] for 128 <= x < 224
+	\else             \thr@@ % [FNC4] [SHIFT B]
+	\fi\fi
+}
+\def\sy@ote@encodeB@cost#1{%
+	\ifnum#1<32       \tw@ % [SHIFT A]
+	\else\ifnum#1<128 \@ne % Encode directly
+	\else\ifnum#1<160 \thr@@ % [FNC4] [SHIFT A]
+	\else             \tw@ % [FNC4]
+	\fi\fi\fi
+}
+\def\sy@ote@encode{%
+	\sy@make@array\sy@costA{sy@A@}%
+	\sy@make@array\sy@costB{sy@B@}%
+	\sy@make@array\sy@costC{sy@C@}%
+	\sy@make@array\sy@data{sy@d@}%
+	\sy@make@array\sy@input{sy@i@}%
+	% Set the initial values.
+	\sy@gf@a=\@M
+	\sy@gf@b=\@M
+	\sy@gf@r=\@M
+	\sy@a=\@ne
+	\sy@b=\@ne
+	\sy@c=\@ne
+	\sy@ote@lastnumericfalse
+	% Fill the array one column at a time.
+	\sy@gf@n=\z@
+	\sy@foreach@token{%
+		\advance\sy@gf@n\@ne
+		\count@=\expandafter`\sy@token\relax
+		\sy@array@set\sy@input{\sy@gf@n}{\count@}%
+		\sy@check@range{\count@}{`\0}{`\9}%
+		% Mode A: min(min(b,c)+1, a) + encodeA@cost
+		\count\z@=\ifnum\sy@b<\sy@c \sy@b \else \sy@c \fi
+		\advance\count\z@ \@ne
+		\ifnum\sy@a<\count\z@ \count\z@=\sy@a \fi
+		\advance\count\z@ \sy@ote@encodeA@cost{\count@}%
+		% Mode B: min(min(a,c)+1, b) + encodeB@cost
+		\count\tw@=\ifnum\sy@a<\sy@c \sy@a \else \sy@c \fi
+		\advance\count\tw@\@ne
+		\ifnum\sy@b<\count\tw@ \count\tw@=\sy@b \fi
+		\advance\count\tw@ \sy@ote@encodeB@cost{\count@}%
+		% Mode C: min(min(prev_a, prev_b)+1, prev_c) + encodeC@cost
+		\count4=\@M
+		\ifsy@ote@lastnumeric \ifsy@inrange
+			\count4=\ifnum\sy@gf@a<\sy@gf@b \sy@gf@a \else \sy@gf@b \fi
+			\advance\count4 \@ne
+			\ifnum\sy@gf@r<\count4 \count4=\sy@gf@r \fi
+			\advance\count4 \@ne % It's always 1.
+		\fi\fi
+		% Set the array and shift all the values.
+		\sy@array@big@set\sy@costA{\sy@gf@n}{\count\z@}%
+		\sy@array@big@set\sy@costB{\sy@gf@n}{\count\tw@}%
+		\sy@array@big@set\sy@costC{\sy@gf@n}{\count4}%
+		\sy@gf@a=\sy@a     \sy@a=\count\z@
+		\sy@gf@b=\sy@b     \sy@b=\count\tw@
+		\sy@gf@r=\sy@c     \sy@c=\count4
+		\ifsy@inrange
+			\sy@ote@lastnumerictrue
+		\else
+			\sy@ote@lastnumericfalse
+		\fi
 	}%
+	\mathchardef\sy@len=\sy@gf@n
+	% XXX
+	\sy@ote@dump\sy@costA\@ne{\sy@len+1}%
+	\sy@ote@dump\sy@costB\@ne{\sy@len+1}%
+	\sy@ote@dump\sy@costC\@ne{\sy@len+1}%
+	% XXX
+	% Minimum cost. This isn't important, but all else being equal, prefer
+	% mode B.
+	\ifnum\sy@a<\sy@b
+		\sy@gf@n=\sy@a
+		\sy@gf@r=\z@
+	\else
+		\sy@gf@n=\sy@b
+		\sy@gf@r=\@ne
+	\fi
+	\ifnum\sy@c<\count@
+		\sy@gf@n=\sy@c
+		\sy@gf@r=\tw@
+	\fi
+	% Encode the data starting from the end.
+	% gf@a = index of the current character to encode.
+	% gf@b = number of encoded octets remaining (the cost).
+	\sy@gf@a=\sy@len
+	\sy@gf@b=\sy@gf@n
+	\message{Encoding \number\sy@len\space characters in
+	         \number\sy@gf@n\space symbols^^J}%
+	\sy@while\ifnum\sy@gf@a>\z@{%
+		% a = the current character to encode.
+		\sy@a=\sy@input{\sy@gf@a}%
+		\message{Inserting character \number\sy@gf@a\space (value
+		\number\sy@a) at \number\sy@gf@b\space in mode \ifcase\sy@gf@r
+		A\or B\or C\fi.^^J}%
+		\ifcase\sy@gf@r
+			% Mode A
+			\ifnum\sy@a<96
+				\sy@ote@encodeA\sy@a
+			\else\ifnum\sy@a<128
+				\sy@ote@encodeB\sy@a
+				\sy@ote@insert{98}% SHIFT B
+			\else\ifnum\sy@a<224
+				\sy@ote@encodeA{\sy@a-128}%
+				\sy@ote@insert{101}% FNC 4 in Mode A
+			\else
+				\sy@ote@encodeB{\sy@a-128}%
+				\sy@ote@insert{98}% SHIFT B
+				\sy@ote@insert{101}% FNC 4 in Mode A
+			\fi\fi\fi
+			\advance\sy@gf@a \m@ne
+		\or	% Mode B
+			\ifnum\sy@a<32
+				\sy@ote@encodeA\sy@a
+				\sy@ote@insert{98}% SHIFT A
+			\else\ifnum\sy@a<128
+				\sy@ote@encodeB\sy@a
+			\else\ifnum<160
+				\sy@ote@encodeA{\sy@a-128}%
+				\sy@ote@insert{98}% SHIFT A
+				\sy@ote@insert{100}% FNC 4 in Mode B
+			\else
+				\sy@ote@encodeB{\sy@a-128}%
+				\sy@ote@insert{100}% FNC 4 in Mode B
+			\fi\fi\fi
+			\advance\sy@gf@a \m@ne
+		\or	% Mode C
+			\sy@b=\sy@input{\sy@gf@a-\@ne}%
+			\advance\sy@b -`0%
+			\multiply\sy@b 10
+			\advance\sy@a -`0%
+			\advance\sy@a \sy@b
+			\sy@ote@insert\sy@a
+			\advance\sy@gf@a -2
+		\fi
+		% Compute the previous mode.
+		\ifnum\sy@gf@a>\z@
+			% There are more characters to encode, determine the
+			% previous mode. All else being equal, prefer to stay
+			% in the same mode.
+			\ifcase\sy@gf@r
+				% Mode A
+				\ifnum\sy@costA{\sy@gf@a}=\sy@gf@b\else
+					\sy@ote@insert{101}% CODE A
+					\ifnum\sy@costB{\sy@gf@a}=\sy@gf@b
+						\sy@gf@r=\@ne
+					\else
+						\sy@gf@r=\tw@
+					\fi
+				\fi
+			\or	% Mode B
+				\ifnum\sy@costB{\sy@gf@a}=\sy@gf@b\else
+					\sy@ote@insert{100}% CODE B
+					\ifnum\sy@costC{\sy@gf@a}=\sy@gf@b
+						\sy@gf@r=\tw@
+					\else
+						\sy@gf@r=\z@
+					\fi
+				\fi
+			\or	% Mode C
+				\ifnum\sy@costC{\sy@gf@a}=\sy@gf@b\else
+					\sy@ote@insert{99}% CODE C
+					\ifnum\sy@costB{\sy@gf@a}=\sy@gf@b
+						\sy@gf@r=\@ne
+					\else
+						\sy@gf@r=\z@
+					\fi
+				\fi
+			\fi
+		\fi
+	}\sy@repeat
+	% Insert the start code.
+	\sy@array@set\sy@data{\z@}{103+\sy@gf@r}% START A/B/C
+	% XXX
+	\message{START \ifcase\sy@gf@r A\or B\or C\fi.^^J}%
+	\sy@ote@dump\sy@data\z@\sy@gf@n
+}
+
+% \sy@ote@insert{value}
+% Decrement \sy@gf@b and insert the value in \sy@data{\sy@gf@b}.
+\def\sy@ote@insert#1{%
+	\advance\sy@gf@b \m@ne
+	\sy@array@set\sy@data{\sy@gf@b}{#1}%
+}
+
+\def\sy@ote@encodeA#1{%
+	\ifnum\numexpr#1\relax<32
+		\sy@ote@insert{#1+96}%
+	\else
+		\sy@ote@insert{#1-32}%
+	\fi
+}
+\def\sy@ote@encodeB#1{%
+	\sy@ote@insert{#1-32}%
+}
+
+% Debugging
+\def\sy@ote@dump#1#2#3{%
+	\begingroup
+	\message{\string#1:}%
+	\sy@for \sy@a=#2 to #3 by 1{%
+		\message{ \number#1{\sy@a}}%
+	}%
+	\message{^^J}%
 	\endgroup
 }
-
-% Initial state, everything in \toks@ 
-% \def\cote@I{%
-% 	\ifnum\count@<4
-% 		\toks@=\expandafter{\expandafter\the\expandafter\toks@\sy@token
-% 	\ifnum\sy@a<`\ %
-		

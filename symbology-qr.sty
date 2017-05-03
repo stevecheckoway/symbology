@@ -176,21 +176,21 @@
 
 \newcommand*\qrgenpoly[1]{%
 	% x + 1
-	\sy@array@set\qrgen\z@\@ne
+	\sy@array@global@set\qrgen\z@\@ne
 	\sy@for \sy@a=\z@ to#1by\@ne{%
 		\sy@b=\sy@a
 		\advance\sy@b\@ne
-		\sy@array@set\qrgen\sy@b\@ne
+		\sy@array@global@set\qrgen\sy@b\@ne
 		\sy@c=\gfantilog\sy@a
 		\chardef\sy@save=\sy@a % Avoid the group by saving \sy@a.
 		\sy@for \sy@a=\sy@a to\z@ by\m@ne{%
 			\gfmul\sy@b{\sy@c}{\qrgen\sy@a}%
 			\gfadd\sy@b\sy@b{\qrgen{\sy@a-\@ne}}%
-			\sy@array@set\qrgen{\sy@a}\sy@b
+			\sy@array@global@set\qrgen{\sy@a}\sy@b
 		}%
 		\sy@a=\sy@save % Restore \sy@a.
 		\gfmul\sy@b{\qrgen\z@}\sy@c
-		\sy@array@set\qrgen\z@\sy@b
+		\sy@array@global@set\qrgen\z@\sy@b
 	}%
 }
 
@@ -212,11 +212,11 @@
 	%   result[count@ + deg(divisor)] = dividend[count@]
 	\sy@for \count@=\sy@a to\m@ne by\m@ne{%
 		\sy@c=\numexpr \count@+\sy@b\relax
-		\sy@array@set{\sy@result}{\sy@c}{\sy@dividend{\count@}}%
+		\sy@array@global@set{\sy@result}{\sy@c}{\sy@dividend{\count@}}%
 	}%
 	% Set the next deg(divisor) coefficients to 0.
 	\sy@for \count@=\sy@b-1 to\m@ne by\m@ne{%
-		\sy@array@set{\sy@result}{\count@}{\z@}%
+		\sy@array@global@set{\sy@result}{\count@}{\z@}%
 	}%
 	%\sy@dump@poly\sy@result{\sy@a+\sy@b}%
 	% Perform the division.
@@ -234,11 +234,11 @@
 		\sy@for \sy@b=\sy@b-\@ne to\m@ne by\m@ne{%
 			\gfmul\count@\sy@c{\sy@divisor{\sy@b}}%
 			\gfadd\count@\count@{\sy@result{\sy@a+\sy@b}}%
-			\sy@array@set{\sy@result}{\sy@a+\sy@b}{\count@}%
+			\sy@array@global@set{\sy@result}{\sy@a+\sy@b}{\count@}%
 		}%
 		\sy@b=\sy@save
 		% Undefine the zeroed coefficient.
-		\sy@array@unset{\sy@result}{\sy@a+\sy@b}%
+		\sy@array@global@unset{\sy@result}{\sy@a+\sy@b}%
 	}%
 	\endgroup
 }
@@ -277,7 +277,7 @@
 			\fi
 		\fi
 	}%
-	\chardef\sy@len=\sy@gf@n
+	\mathchardef\sy@len=\sy@gf@n
 	\ifnum\sy@a=\@ne
 		\def\sy@mode{numeric}%
 		\sy@a=\z@
@@ -875,7 +875,7 @@
 \sy@make@matrix\sy@maskedi{sy@M1@}
 \sy@make@matrix\sy@maskedii{sy@M2@}
 
-\def\sy@module@set{\sy@matrix@set\sy@current@matrix}
+\def\sy@module@set{\sy@matrix@global@set\sy@current@matrix}
 
 \chardef\sy@white=\z@
 \chardef\sy@black=\@ne
@@ -1233,7 +1233,7 @@
 		\else
 			\sy@c\ifodd\sy@c \sy@black \else \sy@white \fi
 		\fi
-		\sy@matrix@set\sy@masked\sy@gf@a\sy@gf@b\sy@c
+		\sy@matrix@global@set\sy@masked\sy@gf@a\sy@gf@b\sy@c
 	}%
 	\sy@gf@r=\z@
 	% Perform the four evaluations in two passes.

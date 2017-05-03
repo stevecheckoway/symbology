@@ -100,7 +100,7 @@
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Global octet arrays.
+% Octet arrays.
 %
 % \sy@make@array\foo{bar@} defines an array accessor \foo such that
 % \foo{idx} expands to \bar@idx where idx is expanded as a number using eTeX's
@@ -115,26 +115,40 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Array setter.
 %
-% \sy@array@set\foo{idx}{value} expands idx and value as numbers using eTeX's
-% \numexpr ... \relax construct and then globally sets \foo{idx} to value.
+% \sy@array@global@set\foo{idx}{value}
+% \sy@array@set\foo{idx}{value}
+% \sy@array@big@set\foo{idx}{value}
+% Expands idx and value as numbers using eTeX's \numexpr ... \relax construct
+% and then (globally) sets \foo{idx} to value.
+% The big variant uses \mathchardef which increases the range of values and
+% size of the array.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\sy@array@set[3]{%
+\newcommand*\sy@array@global@set[3]{%
 	\global\expandafter\expandafter\expandafter
 	\chardef#1{#2}=\numexpr#3\relax
+}
+\newcommand*\sy@array@set[3]{%
+	\expandafter\expandafter\expandafter
+	\chardef#1{#2}=\numexpr#3\relax
+}
+\newcommand*\sy@array@big@set[3]{%
+	\expandafter\expandafter\expandafter
+	\mathchardef#1{#2}=\numexpr#3\relax
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Array unsetter.
 %
-% \sy@array@unset\foo{idx} undefines \foo{idx}, freeing it from TeX's memory.
+% \sy@array@global@unset\foo{idx}
+% Globally undefines \foo{idx}, freeing it from TeX's memory.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\sy@array@unset[2]{%
+\newcommand*\sy@array@global@unset[2]{%
 	\global\expandafter\expandafter\expandafter
 	\let#1{#2}=\@undefined
 }
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Global octet matrices.
+% Octet matrices.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\sy@make@matrix[2]{%
 	\edef#1##1##2{%
@@ -143,12 +157,31 @@
 	}%
 }
 
-\newcommand*\sy@matrix@set[4]{%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Matrix setter.
+%
+% \sy@matrix@global@set\foo{row}{col}{value}
+% \sy@matrix@set\foo{row}{col}{value}
+% Expands row, col, and value as numbers using eTeX's \numexpr ... \relax
+% construct and then (globally) sets \foo{row}{col} to value.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@matrix@global@set[4]{%
 	\global\expandafter\expandafter\expandafter
 	\chardef#1{#2}{#3}=\numexpr#4\relax
 }
 
-\newcommand*\sy@matrix@unset[3]{%
+\newcommand*\sy@matrix@set[4]{%
+	\expandafter\expandafter\expandafter
+	\chardef#1{#2}{#3}=\numexpr#4\relax
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Matrix unsetter.
+%
+% \sy@matrix@global@unset\foo{row}{col}
+% Globally undefines \foo{row}{col}, freeing it from TeX's memory.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\sy@matrix@global@unset[3]{%
 	\global\expandafter\expandafter\expandafter
 	\let#1{#2}{#3}=\@undefined
 }

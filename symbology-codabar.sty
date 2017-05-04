@@ -1,0 +1,101 @@
+\ProvidesPackage{symbology-codabar}
+  [2017/05/03 v1.0 Construct Codabar barcodes]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Codabar
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\define@cmdkeys{codabar}[sy@cb@]{xwidth,height,font}{}
+\define@boolkey{codabar}[sy@cb@]{rationalized}[true]{}
+\define@choicekey{codabar}{start}[\sy@cb@start\sy@cb@start@nr]{A,T,B,N,C,*,D,E}{}
+\define@choicekey{codabar}{stop}[\sy@cb@stop\sy@cb@stop@nr]{A,T,B,N,C,*,D,E}{}
+
+\setkeys{codabar}{start=A,stop=B,xwidth=\p@,height=2\baselineskip,font=\ttfamily}
+
+\csdef{sy@codabar}{%
+	\dimen@=\dimexpr\sy@cb@xwidth\relax
+	\dimen\tw@=\dimexpr\sy@cb@height\relax
+	\edef~{\ifsy@cb@rationalized2\else3\fi}%
+	% Start and stop values.
+	\sy@a=\sy@cb@start@nr\relax
+	\divide\sy@a\tw@
+	\advance\sy@a16
+	\sy@b=\sy@cb@stop@nr\relax
+	\divide\sy@b\tw@
+	\advance\sy@b16
+	\hbox{%
+		\sy@cb@symbol{\sy@a}{\sy@cb@start}% Start
+		\sy@foreach@token{%
+			\sy@c=\expandafter`\sy@token\relax
+			\sy@check@range\sy@c{`0}{`9}%
+			\ifsy@inrange
+				\advance\sy@c-`0%
+				\sy@cb@symbol{\sy@c}{\sy@token}%
+			\else\ifnum\sy@c=`-%
+				\sy@cb@symbol{10}{\sy@token}%
+			\else\ifnum\sy@c=`\$%
+				\sy@cb@symbol{11}{\sy@token}%
+			\else\ifnum\sy@c=`:%
+				\sy@cb@symbol{12}{\sy@token}%
+			\else\ifnum\sy@c=`/%
+				\sy@cb@symbol{13}{\sy@token}%
+			\else\ifnum\sy@c=`.%
+				\sy@cb@symbol{14}{\sy@token}%
+			\else\ifnum\sy@c=`+%
+				\sy@cb@symbol{15}{\sy@token}%
+			\else
+				\sy@error{Invalid character `\sy@token' for \sy@type}%
+			\fi\fi\fi\fi\fi\fi\fi
+		}%
+		\sy@cb@symbol{-\sy@b}{\sy@cb@stop}% Stop
+	}%
+}
+
+\def\sy@cb@symbol#1#2{%
+	\count@=#1\relax
+	\ifnum\count@<\z@ \count@=-\count@ \fi
+	\setbox\z@=\hbox{%
+		\expandafter\sy@cb@draw
+			\ifcase\count@
+		            11111~~% 0
+			\or 1111~~1% 1
+			\or 111~11~% 2
+			\or ~~11111% 3
+			\or 11~11~1% 4
+			\or ~1111~1% 5
+			\or 1~1111~% 6
+			\or 1~11~11% 7
+			\or 1~~1111% 8
+			\or ~11~111% 9
+			\or 111~~11% -
+			\or 11~~111% $
+			\or 2111212% :
+			\or 2121112% /
+			\or 2121211% .
+			\or 1121212% +
+			\or 1122121% A
+			\or 1212112% B
+			\or 1112122% C
+			\or 1112221% D
+			\fi
+	}%
+	\vtop{%
+		\copy\z@
+		\nointerlineskip
+		\vskip\p@
+		\hb@xt@\wd\z@{\hss{\sy@cb@font{\strut#2}}\hss}%
+	}%
+	\ifnum#1<\z@\else
+		\sy@linear@space\dimen@{\dimen\tw@}%
+	\fi
+}
+
+\def\sy@cb@draw#1#2#3#4#5#6#7{%
+	\sy@linear@bar  {#1\dimen@}{\dimen\tw@}%
+	\sy@linear@space{#2\dimen@}{\dimen\tw@}%
+	\sy@linear@bar  {#3\dimen@}{\dimen\tw@}%
+	\sy@linear@space{#4\dimen@}{\dimen\tw@}%
+	\sy@linear@bar  {#5\dimen@}{\dimen\tw@}%
+	\sy@linear@space{#6\dimen@}{\dimen\tw@}%
+	\sy@linear@bar  {#7\dimen@}{\dimen\tw@}%
+}
+

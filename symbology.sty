@@ -360,9 +360,26 @@
 \def\sy@modx#1#2{\numexpr#1-#2*\sy@divx{#1}{#2}\relax}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Draw a bars and spaces for linear bar codes.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \sy@color@rule{color}{width}{height}
+% \sy@linear@bar{width}{height}
+% \sy@linear@space{width}{height}
+\def\sy@color@rule#1#2#3{%
+	\begingroup
+	\color{#1}%
+	\vrule\@width#2\@height#3\relax
+	\endgroup
+}
+\def\sy@linear@bar#1#2{\sy@color@rule{\sy@darkcolor}{#1}{#2}}
+\def\sy@linear@space#1#2{\sy@color@rule{\sy@lightcolor}{#1}{#2}}
+\def\sy@linear@quiet#1#2{\sy@color@rule{\sy@quietcolor}{#1}{#2}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Load the packages.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Linear barcodes.
+\RequirePackage{symbology-codabar}
 \RequirePackage{symbology-code11}
 \RequirePackage{symbology-code39}
 \RequirePackage{symbology-code128}

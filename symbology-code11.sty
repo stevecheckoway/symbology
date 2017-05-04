@@ -5,7 +5,7 @@
 % Code 11
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \define@cmdkeys{code11}[sy@oo@]{xwidth,height,font}{}
-\define@choicekey+{code11}{checksum}[\sy@oo@checksum\sy@oo@checksum@nl]{none,auto,C,K}{}
+\define@choicekey+{code11}{checksum}[\sy@oo@checksum\sy@oo@checksum@nr]{none,auto,C,K}{}
 	{\sy@error{Requested checksum `#1' invalid.\MessageBreak
 	           Valid values: none, auto, C, K}}
 
@@ -55,7 +55,7 @@
 		\ifnum\sy@b=\@ne\else \sy@error{Internal error: Check digit K weight not 1!}\fi
 		\sy@gf@a=\sy@mod\sy@gf@a{11}%
 		\sy@gf@b=\sy@mod{\sy@gf@b+\sy@gf@a}{11}%
-		\ifcase\sy@oo@checksum@nl
+		\ifcase\sy@oo@checksum@nr
 		\or % auto
 			\sy@oo@symbol\sy@gf@a
 			\ifnum\sy@len>9

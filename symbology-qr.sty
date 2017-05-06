@@ -1,34 +1,37 @@
 \ProvidesPackage{symbology-qr}
   [2016/04/20 v1.0 Construct QR codes]
 
+\def\sy@qr@family{2d}
+\def\sy@qr@defaults{}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Options.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Common options.
-\define@cmdkeys{qr}[sy@qr@]{width}
-\define@cmdkey{qr}[sy@qr@requested@]{version}{%
+\define@cmdkeys[SY]{qr}[sy@qr@]{width}
+\define@cmdkey[SY]{qr}[sy@qr@requested@]{version}{%
 	\sy@star@or@range\sy@qr@requested@version\@ne{40}%
 	\ifsy@inrange\else
 		\sy@error{Requested version `#1' invalid.\MessageBreak
 			  Valid values: 1-40 or *}%
 	\fi
 }
-\define@choicekey+{qr}{mode}[\sy@qr@requested@mode\sy@qr@requested@mode@nr]{numeric,alphanum,byte,*}{}
+\define@choicekey+[SY]{qr}{mode}[\sy@qr@requested@mode\sy@qr@requested@mode@nr]{numeric,alphanum,byte,*}{}
 	{\sy@error{Requested QR mode `#1' invalid.\MessageBreak
 		Valid values: numeric, alphanum, byte, or *}}
-\define@choicekey+{qr}{level}[\sy@qr@requested@ecl\sy@qr@requested@ecl@nr]{*,L,M,Q,H}{}
+\define@choicekey+[SY]{qr}{level}[\sy@qr@requested@ecl\sy@qr@requested@ecl@nr]{*,L,M,Q,H}{}
 	{\sy@error{Requested error correction level `#1' invalid.\MessageBreak
 	           Valid values: L, M, Q, H, or *}}
 
 % Uncommon options.
-\define@cmdkey{qr}[sy@qr@requested@]{mask}{%
+\define@cmdkey[SY]{qr}[sy@qr@requested@]{mask}{%
 	\sy@star@or@range\sy@qr@requested@mask\z@7%
 	\ifsy@inrange\else
 		\sy@error{Requested mask `#1' invalid.\MessageBreak
 			  Valid values: 0-7 or *}%
 	\fi
 }
-\define@boolkey{qr}[sy@]{strictlevel}[true]{}
+\define@boolkey[SY]{qr}[sy@]{strictlevel}[true]{}
 
 % Debugging options.
 \def\sy@set@debugging{%
@@ -36,13 +39,12 @@
 	\let\ifsy@dbg@ecc=\ifsy@dbg@all
 	\let\ifsy@dbg@interleave=\ifsy@dbg@all
 }
-\define@boolkeys{sy@dbg}[sy@dbg@]{data,ecc,interleave,timing,parameters}[true]
-\define@boolkey{sy@dbg}[sy@dbg@]{all}[true]{\sy@set@debugging}
-\define@key{qr}{debug}{\setkeys{sy@dbg}{#1}}
+\define@boolkeys[SY]{sy@dbg}[sy@dbg@]{data,ecc,interleave,timing,parameters}[true]
+\define@boolkey[SY]{sy@dbg}[sy@dbg@]{all}[true]{\sy@set@debugging}
+\define@key[SY]{qr}{debug}{\setkeys{sy@dbg}{#1}}
 
-% Initial key values. Don't use \presetkeys since they will override package
-% keys.
-\setkeys{qr}{width=2cm,version=*,mode=*,level=*,mask=*}
+% Initial key values.
+\presetkeys[SY]{qr}{width=2cm,version=*,mode=*,level=*,mask=*}{}
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -387,18 +389,18 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\sy@set@parameters{%
 	\if L\sy@ecl
-		\def\sy@v##1##2##3##4{\sy@gf@next##1.}%
+		\def\sy@v##1##2##3##4{\sy@next##1.}%
 	\else \if M\sy@ecl
-		\def\sy@v##1##2##3##4{\sy@gf@next##2.}%
+		\def\sy@v##1##2##3##4{\sy@next##2.}%
 	\else \if Q\sy@ecl
-		\def\sy@v##1##2##3##4{\sy@gf@next##3.}%
+		\def\sy@v##1##2##3##4{\sy@next##3.}%
 	\else \if H\sy@ecl
-		\def\sy@v##1##2##3##4{\sy@gf@next##4.}%
+		\def\sy@v##1##2##3##4{\sy@next##4.}%
 	\else
 		\sy@error{Invalid error correction parameter.\MessageBreak
 			  Valid values are L, M, Q, and H}%
 	\fi\fi\fi\fi
-	\def\sy@gf@next##1 ##2 ##3 ##4.{%
+	\def\sy@next##1 ##2 ##3 ##4.{%
 		\mathchardef\sy@total@data@words=##1\relax
 		\chardef\sy@ecc@words@per@blk=##2\relax
 		\chardef\sy@blks@per@groupi=##3\relax

@@ -34,9 +34,25 @@
 	\fi
 }
 
-\define@cmdkeys{sy}[sy@]{darkcolor,lightcolor,quietcolor}
-\define@boolkey{sy}[sy@]{quietzone}[true]{}
-\setkeys{sy}{darkcolor=black,lightcolor=white,quietcolor=white,quietzone=true}
+% Generic options which can be used with all barcodes.
+\define@cmdkeys[SY]{sy}[sy@]{darkcolor,lightcolor,quietcolor,font}
+\define@boolkey[SY]{sy}[sy@]{quietzone}[true]{}
+\savekeys[SY]{sy}{lightcolor}
+\presetkeys[SY]{sy}
+	{darkcolor=black,lightcolor=white,font=\ttfamily,quietzone}
+	{quietcolor=\usevalue{lightcolor}}
+
+% Options for use with linear barcodes.
+\newdimen\sy@xwidth
+\newdimen\sy@height
+\newdimen\sy@depth
+\sy@depth=\z@
+\define@cmdkey[SY]{linear}{xwidth}{\sy@xwidth=\dimexpr#1\relax}
+\define@cmdkey[SY]{linear}{height}{\sy@height=\dimexpr#1\relax}
+\define@boolkey[SY]{linear}{letterpersymbol}[true]{}
+\presetkeys[SY]{linear}
+	{xwidth=\p@,height=2\baselineskip}
+	{}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \newcount\sy@gf@a
@@ -237,16 +253,6 @@
 )
 |endgroup
 
-% \sy@make@color@box{box}{width}{height}{overlapwidth}{overlapdepth}{color}
-\newcommand*\sy@make@color@box[6]{%
-	\setbox#1=\color@hbox
-		\color{#6}%
-		\vrule\@width\dimexpr#2+#4\relax\@height#3\@depth#5%
-	\color@endbox
-	\wd#1=#2%
-	\dp#1=\z@
-}
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Iterate over the barcode data
 %
@@ -255,20 +261,23 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \newcommand*\sy@foreach@token[1]{%
 	\def\sy@foreach@v{#1}%
-	\expandafter\futurelet\expandafter\sy@token\expandafter\sy@foreach\sy@msg\sy@foreach
+	\expandafter\futurelet\expandafter\sy@token\expandafter\sy@foreach\sy@msg\sy@marker
 }
 
+\def\sy@marker{\sy@marker@err}
+\def\sy@marker@err{\sy@error{Internal error: \string\sy@marker\space executed.}}
+
 \def\sy@foreach{%
-	\ifx\sy@token\sy@foreach
-		\let\sy@gf@next\@gobble
+	\ifx\sy@token\sy@marker
+		\let\sy@next\@gobble
 	\else
 		\ifx\sy@token\@sptoken
-			\let\sy@gf@next\sy@foreach@space
+			\let\sy@next\sy@foreach@space
 		\else
-			\let\sy@gf@next\sy@foreach@nonspace
+			\let\sy@next\sy@foreach@nonspace
 		\fi
 	\fi
-	\sy@gf@next
+	\sy@next
 }
 
 \def\sy@foreach@nonspace#1{%
@@ -305,8 +314,10 @@
 	\begingroup
 	\edef\sy@type{#2}%
 	\def\sy@error##1{\PackageError{symbology}{##1}{}}%
+	\message{Barcode \sy@type}%
 	\ifcsname sy@\sy@type\endcsname
-		\setkeys{sy,\sy@type}{#1}%
+		\csuse{sy@\sy@type @defaults}%
+		\setkeys[SY]{sy,\csuse{sy@\sy@type @family},\sy@type}{#1}%
 	\else
 		\sy@error{Unknown barcode type `\sy@type'}%
 	\fi
@@ -362,18 +373,50 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Draw a bars and spaces for linear bar codes.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% \sy@color@rule{color}{width}{height}
-% \sy@linear@bar{width}{height}
-% \sy@linear@space{width}{height}
-\def\sy@color@rule#1#2#3{%
+% \sy@color@rule{color}{width}{height}{depth}
+% \sy@linear@bar{widthfactor}
+% \sy@linear@space{widthfactor}
+\def\sy@color@rule#1#2#3#4{%
 	\begingroup
 	\color{#1}%
-	\vrule\@width#2\@height#3\relax
+	\vrule\@width#2\@height#3\@depth#4\relax
 	\endgroup
 }
-\def\sy@linear@bar#1#2{\sy@color@rule{\sy@darkcolor}{#1}{#2}}
-\def\sy@linear@space#1#2{\sy@color@rule{\sy@lightcolor}{#1}{#2}}
-\def\sy@linear@quiet#1#2{\sy@color@rule{\sy@quietcolor}{#1}{#2}}
+\def\sy@linear@bar#1{\sy@color@rule{\sy@darkcolor}{#1\sy@xwidth}\sy@height\sy@depth}
+\def\sy@linear@space#1{\sy@color@rule{\sy@lightcolor}{#1\sy@xwidth}\sy@height\sy@depth}
+\def\sy@linear@quiet#1{\sy@color@rule{\sy@quietcolor}{#1\sy@xwidth}\sy@height\sy@depth}
+
+\newbox\sy@linear@box
+\def\sy@linear@symbol#1#2{%
+	\message{sym: #2  weights: #1^^J}%
+	\setbox\sy@linear@box=\hbox{%
+		\expandafter\sy@linear@barsandspaces#1\sy@marker
+	}%
+	\ifSY@linear@letterpersymbol
+		\vtop{%
+			\dimen@=\wd\sy@linear@box
+			\box\sy@linear@box
+			\nointerlineskip
+			\kern\p@
+			\hb@xt@\dimen@{\hss\sy@font{\strut#2}\hss}%
+		}%
+	\else
+		\unhbox\sy@linear@box
+	\fi
+}
+
+\def\sy@linear@barsandspaces#1{%
+	\ifx\sy@marker#1\else
+		\sy@linear@bar{#1}%
+		\expandafter\sy@linear@spacesandbars
+	\fi
+}
+\def\sy@linear@spacesandbars#1{%
+	\ifx\sy@marker#1\else
+		\sy@linear@space{#1}%
+		\expandafter\sy@linear@barsandspaces
+	\fi
+}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Load the packages.

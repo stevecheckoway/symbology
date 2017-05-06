@@ -4,20 +4,15 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Code 11
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\define@cmdkeys{code11}[sy@oo@]{xwidth,height,font}{}
-\define@choicekey+{code11}{checksum}[\sy@oo@checksum\sy@oo@checksum@nr]{none,auto,C,K}{}
+\define@choicekey+[SY]{code11}{checksum}[\sy@oo@checksum\sy@oo@checksum@nr]{none,auto,C,K}{}
 	{\sy@error{Requested checksum `#1' invalid.\MessageBreak
 	           Valid values: none, auto, C, K}}
 
-\setkeys{code11}{xwidth=\p@,height=2\baselineskip,checksum=auto,font=\ttfamily}
+\presetkeys[SY]{code11}{checksum=auto}{}
+\csdef{sy@code11@family}{linear}
 
 \csdef{sy@code11}{%
-	\dimen@=\sy@oo@xwidth\relax
-	\dimen\tw@=\sy@oo@height\relax
-	\sy@make@color@box{`b}{\dimen@}{\dimen\tw@}\z@\z@{\sy@darkcolor}%
-	\sy@make@color@box{`B}{2\dimen@}{\dimen\tw@}\z@\z@{\sy@darkcolor}%
-	\sy@make@color@box{`s}{\dimen@}{\dimen\tw@}\z@\z@{\sy@lightcolor}%
-	\sy@make@color@box{`S}{2\dimen@}{\dimen\tw@}\z@\z@{\sy@lightcolor}%
+	\message{Code 11: \sy@msg^^J}%
 	% Set c to the length in order to compute the checksums.
 	% gf@a and gf@b will be the running totals for the C and K checksums.
 	% a and b will be the corresponding weights.
@@ -29,7 +24,7 @@
 	\sy@a=\sy@mod\sy@c{10}%
 	\sy@b=\sy@mod{\sy@c+\@ne}9%
 	\hbox{%
-		\sy@oo@symbol{11}% Start
+		\sy@oo@symbol{11}{*}% Start
 		\sy@foreach@token{%
 			\sy@c=\expandafter`\sy@token\relax
 			\sy@check@range\sy@c{`0}{`9}%
@@ -40,7 +35,7 @@
 			\else
 				\sy@error{Invalid character `\sy@token' for Code 11}%
 			\fi\fi
-			\sy@oo@symbol\sy@c
+			\sy@oo@symbol\sy@c{\sy@token}%
 			% Update the checksums.
 			\ifnum\sy@a=\z@ \sy@a=10 \fi
 			\ifnum\sy@b=\z@ \sy@b=9 \fi
@@ -57,47 +52,42 @@
 		\sy@gf@b=\sy@mod{\sy@gf@b+\sy@gf@a}{11}%
 		\ifcase\sy@oo@checksum@nr
 		\or % auto
-			\sy@oo@symbol\sy@gf@a
+			\sy@oo@symbol\sy@gf@a{\sy@oo@digit\sy@gf@a}%
 			\ifnum\sy@len>9
-				\sy@oo@symbol\sy@gf@b
+				\sy@oo@symbol\sy@gf@b{\sy@oo@digit\sy@gf@b}%
 			\fi
 		\or % C
-			\sy@oo@symbol\sy@gf@a
+			\sy@oo@symbol\sy@gf@a{\sy@oo@digit\sy@gf@a}%
 		\or % K
-			\sy@oo@symbol\sy@gf@a
-			\sy@oo@symbol\sy@gf@b
+			\sy@oo@symbol\sy@gf@a{\sy@oo@digit\sy@gf@a}%
+			\sy@oo@symbol\sy@gf@b{\sy@oo@digit\sy@gf@b}%
 		\fi
-		\sy@oo@symbol{12}% Stop
+		\sy@oo@symbol{12}{*}% Stop
 	}%
 }
 
-\def\sy@oo@symbol#1{%
+\def\sy@oo@symbol#1#2{%
 	\count@=#1\relax
-	\expandafter\sy@oo@draw
+	\edef\sy@oo@weights{%
 		\ifcase\count@
-	              bsbsB% 0
-		\or   BsbsB% 1
-		\or   bSbsB% 2
-		\or   BSbsb% 3
-		\or   bsBsB% 4
-		\or   BsBsb% 5
-		\or   bSBsb% 6
-		\or   bsbSB% 7
-		\or   BsbSb% 8
-		\or   Bsbsb% 9
-		\or   bsBsb% -
-		\else bsBSb% Start/Stop
+	              11112% 0
+		\or   21112% 1
+		\or   12112% 2
+		\or   22111% 3
+		\or   11212% 4
+		\or   21211% 5
+		\or   12211% 6
+		\or   11122% 7
+		\or   21121% 8
+		\or   21111% 9
+		\or   11211% -
+		\else 11221% 2tart/2top
 		\fi
+	}%
+	\sy@linear@symbol\sy@oo@weights{#2}%
 	\ifnum\count@<12
-		\unhcopy`s%
+		\sy@linear@space1%
 	\fi
 }
 
-\def\sy@oo@draw#1#2#3#4#5{%
-	\unhcopy`#1%
-	\unhcopy`#2%
-	\unhcopy`#3%
-	\unhcopy`#4%
-	\unhcopy`#5%
-}
-
+\def\sy@oo@digit#1{\ifnum#1=10 -\else\char"3\number#1\fi}

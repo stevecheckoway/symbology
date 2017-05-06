@@ -4,9 +4,8 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Code 39
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\define@cmdkeys{code128}[sy@ote@]{xwidth,height,font}{}
-
-\setkeys{code128}{xwidth=\p@,height=2\baselineskip,font=\ttfamily}
+\csdef{sy@code128@family}{linear}
+\csdef{sy@code128@family@defaults}{}
 
 \csdef{sy@code128}{%
 	% XXX Check for GS1-128 application identifier and prepend to \sy@msg.
@@ -269,38 +268,19 @@
 % Drawing.
 \def\sy@ote@draw{%
 	\color@hbox
-		\dimen@=\sy@ote@xwidth\relax
-		\dimen\tw@=\sy@ote@height\relax
 		\ifsy@quietzone
-			\sy@ote@bar\sy@quietcolor{10}%
+			\sy@linear@quiet{10}%
 		\fi
 		\sy@for \sy@a=\z@ to\sy@gf@n by\@ne{%
-			\edef\sy@temp{\sy@ote@width{\sy@data{\sy@a}}}%
-			\expandafter\sy@ote@symbol\sy@temp
+			\edef\sy@ote@weights{\sy@ote@symbol@weights{\sy@data{\sy@a}}}%
+			\sy@linear@symbol\sy@ote@weights{}%
 		}%
 		% Stop pattern.
-		\sy@ote@symbol233111%
-		\sy@ote@bar\sy@darkcolor2%
+		\sy@linear@symbol{2331112}{}%
 		\ifsy@quietzone
-			\sy@ote@bar{\sy@quietcolor}{10}%
+			\sy@linear@quiet{10}%
 		\fi
 	\color@endbox
-}
-
-\def\sy@ote@bar#1#2{%
-	\begingroup
-	\color{#1}%
-	\vrule \@height\dimen\tw@ \@width#2\dimen@
-	\endgroup
-}
-
-\def\sy@ote@symbol#1#2#3#4#5#6{%
-	\sy@ote@bar\sy@darkcolor#1%
-	\sy@ote@bar\sy@lightcolor#2%
-	\sy@ote@bar\sy@darkcolor#3%
-	\sy@ote@bar\sy@lightcolor#4%
-	\sy@ote@bar\sy@darkcolor#5%
-	\sy@ote@bar\sy@lightcolor#6%
 }
 
 % Debugging
@@ -315,7 +295,7 @@
 }
 
 % Table of widths.
-\def\sy@ote@width#1{
+\def\sy@ote@symbol@weights#1{
 	\ifcase\numexpr#1\relax
 	   212222% 0
 	\or222122% 1

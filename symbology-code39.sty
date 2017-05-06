@@ -4,42 +4,34 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Code 39
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\define@cmdkeys{code39}[sy@tn@]{xwidth,height,font}{}
-\define@boolkey{code39}[sy@tn@]{includecheck}[true]{}
+\define@boolkey[SY]{code39}[sy@tn@]{checksum}[true]{}
 
-\setkeys{code39}{xwidth=\p@,height=2\baselineskip,font=\ttfamily}
+\csdef{sy@code39@family}{linear}
+\csdef{sy@code39@defaults}{}
 
 \csdef{sy@code39}{%
 	\hbox{%
-		\dimen@=\sy@tn@xwidth\relax
-		\dimen\tw@=\sy@tn@height\relax
-		\sy@make@color@box{`b}{\dimen@}{\dimen\tw@}\z@\z@{\sy@darkcolor}%
-		\sy@make@color@box{`B}{2\dimen@}{\dimen\tw@}\z@\z@{\sy@darkcolor}%
-		\sy@make@color@box{`s}{\dimen@}{\dimen\tw@}\z@\z@{\sy@lightcolor}%
-		\sy@make@color@box{`S}{2\dimen@}{\dimen\tw@}\z@\z@{\sy@lightcolor}%
-		\sy@tn@draw bbBBbSsss*%
-		\unhcopy`s%
+		\sy@linear@symbol{121121211}{*}%
+		\sy@linear@space1%
 		\sy@c\z@
 		\sy@foreach@token{%
-			\sy@a=\expandafter`\sy@token\relax
-			\sy@tn@encode
-			\expandafter\sy@tn@draw\sy@tn@encoded\sy@token
-			\unhcopy`s%
+			\sy@tn@symbol
+			\sy@linear@space1%
 		}%
-		\ifsy@tn@includecheck
+		\ifsy@tn@checksum
 			\sy@a=\sy@c
 			\divide\sy@a43
 			\multiply\sy@a-43
 			\advance\sy@a\sy@c
-			\sy@tn@encode@check
-			\expandafter\sy@tn@draw\sy@tn@encoded{ }%
-			\unhcopy`s%
+			\sy@tn@check@symbol
+			\sy@linear@space1%
 		\fi
-		\sy@tn@draw bbBBbSsss*%
+		\sy@linear@symbol{121121211}{*}%
 	}%
 }
 
-\def\sy@tn@encode{%
+\def\sy@tn@symbol{%
+	\sy@a=\expandafter`\sy@token\relax
 	\ifnum\sy@a=`\0%
 		\sy@a=10
 		\sy@b=\tw@
@@ -99,10 +91,19 @@
 		\or \advance\sy@c19 \advance\sy@c\sy@a
 		\fi
 	\fi
-	\sy@tn@set@encoded
+	\sy@tn@set@weights
+	\sy@linear@symbol{\sy@tn@weights}{\sy@token}%
 }
 
-\def\sy@tn@encode@check{%
+\def\sy@tn@check@symbol{%
+	\edef\sy@token{%
+		\ifcase\sy@a
+		    0\or 1\or 2\or 3\or 4\or 5\or 6\or 7\or 8\or 9\or A\or B%
+		\or C\or D\or E\or F\or G\or H\or I\or J\or K\or L\or M\or N%
+		\or O\or P\or Q\or R\or S\or T\or U\or V\or W\or X\or Y\or Z%
+		\or -\or .\or \space\or\$\or /\or +\or\%%
+		\fi
+	}%
 	\ifnum\sy@a<39
 		\sy@inrangetrue
 		\ifnum\sy@a<10
@@ -127,64 +128,45 @@
 		\fi
 		\sy@a=11
 	\fi
-	\sy@tn@set@encoded
+	\sy@tn@set@weights
+	\sy@linear@symbol{\sy@tn@weights}{\sy@token}%
 }
 
-\def\sy@tn@set@encoded{%
-	\edef\sy@tn@encoded{%
+\def\sy@tn@set@weights{%
+	\edef\sy@tn@weights{%
 		\ifcase\sy@a
-		\or BbbbB%
-		\or bBbbB%
-		\or BBbbb%
-		\or bbBbB%
-		\or BbBbb%
-		\or bBBbb%
-		\or bbbBB%
-		\or BbbBb%
-		\or bBbBb%
-		\or bbBBb%
-		\else bbbbb%
+		% Bars.
+		\or 21112%
+		\or 12112%
+		\or 22111%
+		\or 11212%
+		\or 21211%
+		\or 12211%
+		\or 11122%
+		\or 21121%
+		\or 12121%
+		\or 11221%
+		\else 11111%
 		\fi
+		% Spaces.
 		\ifsy@inrange
 			\ifcase\sy@b
-			\or Ssss%
-			\or sSss%
-			\or ssSs%
-			\or sssS%
+			\or 2111%
+			\or 1211%
+			\or 1121%
+			\or 1112%
 			\fi
 		\else
 			\ifcase\sy@b
-			\or sSSS%
-			\or SsSS%
-			\or SSsS%
-			\or SSSs%
+			\or 1222%
+			\or 2122%
+			\or 2212%
+			\or 2221%
 			\fi
 		\fi
 	}%
+	\edef\sy@tn@weights{\expandafter\sy@tn@interleave\sy@tn@weights}%
 }
 
-\def\sy@tn@draw#1#2#3#4#5#6#7#8#9{%
-	\setbox\z@\hbox{%
-		\unhcopy`#1%
-		\unhcopy`#6%
-		\unhcopy`#2%
-		\unhcopy`#7%
-		\unhcopy`#3%
-		\unhcopy`#8%
-		\unhcopy`#4%
-		\unhcopy`#9%
-		\unhcopy`#5%
-	}%
-	\sy@tn@drawx
-}
-
-\def\sy@tn@drawx#1{%
-	\vtop{%
-		\copy\z@
-		\nointerlineskip
-		\vskip\p@
-		\hb@xt@\wd\z@{\hss{\sy@tn@font{\strut#1}}\hss}%
-	}%
-}
-
+\def\sy@tn@interleave#1#2#3#4#5#6#7#8#9{#1#6#2#7#3#8#4#9#5}
 

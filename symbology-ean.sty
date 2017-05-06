@@ -4,16 +4,28 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % EAN and UPC
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\define@cmdkeys{ean}[sy@ean@]{xwidth,height,font}
 
-\setkeys{ean}{xwidth=.33mm,height=25.9mm,font=\ttfamily}
+\def\sy@upc@family{linear}
+\let\sy@upca@family=\sy@upc@family
+\let\sy@upce@family=\sy@upc@family
+\cslet{sy@ean13@family}\sy@upc@family
+\cslet{sy@ean8@family}\sy@upc@family
+
+\def\sy@upc@defaults{%
+	\presetkeys[SY]{linear}{xwidth=.33mm,height=22.85mm}{}%
+}
+\def\sy@upca@defaults{\sy@upc@defaults}
+\let\sy@upce@defaults=\sy@upca@defaults
+\cslet{sy@ean13@defaults}\sy@upca@defaults
+\cslet{sy@ean8@defaults}\sy@upca@defaults
 
 \def\sy@ean@setup{%
 	\sy@a=\z@
 	\sy@b=\z@
 	\sy@c=\z@
 	\sy@foreach@token{%
-		\expandafter\sy@check@range\expandafter{\expandafter`\sy@token}{`0}{`9}%
+		\count@=\expandafter`\sy@token\relax
+		\sy@check@range{\count@}{`0}{`9}%
 		\ifsy@inrange\else
 			\sy@error{Invalid digit for EAN/UPC `\sy@token'}%
 		\fi
@@ -36,100 +48,86 @@
 	\ifnum\sy@a=\sy@b\else
 		\advance\sy@b-\sy@a
 		\advance\sy@b10
-		\PackageError{qr}{\sy@ean@type\space check digit error.\MessageBreak
-			Expected `\number\sy@b'\space got `\sy@token'}{}%
+		\sy@error{\sy@ean@type\space check digit error.\MessageBreak
+			  Expected `\number\sy@b'\space got `\sy@token'}{}%
 	\fi
-	\def\B##1{%
-		\textcolor{\sy@darkcolor}{\vrule\@height\dimen\tw@\@width##1\dimen@\@depth\dimen4 }%
-	}%
-	\def\W##1{%
-		\textcolor{\sy@lightcolor}{\vrule\@height\dimen\tw@\@width##1\dimen@\@depth\dimen4 }%
-	}%
-	\def\Q##1{%
-		\textcolor{\sy@quietcolor}{\vrule\@height\dimen\tw@\@width##1\dimen@}%
-	}%
-	\dimen@=\dimexpr\sy@ean@xwidth\relax
-	\dimen\tw@=\dimexpr\sy@ean@height\relax
-	\dimen4=5\dimen@
+	\sy@depth=5\sy@xwidth
 }
 
 \def\sy@ean@quietzone#1{%
 	\vtop{%
 		\ifsy@quietzone
-			\setbox\z@=\color@hbox
-				\color{\sy@ean@quietcolor}%
-				\vrule\@height\dimen\tw@\@width9\dimen@
-			\color@endbox
+			\setbox\z@=\hbox{\sy@linear@quiet9}%
+			\dp\z@=\z@
 			\dimen@\wd\z@
 			\box\z@
 			\nointerlineskip
 			\vskip\p@
-			\hb@xt@\dimen@{{\sy@ean@font{#1}}}%
+			\hb@xt@\dimen@{{\sy@font{#1}}}%
 		\else
 			\hbox{}%
 			\nointerlineskip
 			\vskip\p@
-			\hbox{{\sy@ean@font{#1}}}%
+			\hbox{{\sy@font{#1}}}%
 		\fi
 	}%
 }
 
-\def\sy@ean@lquietzone#1{\sy@ean@quietzone{\hss#1\kern\p@}}
-\def\sy@ean@rquietzone#1{\sy@ean@quietzone{\kern\p@#1\hss}}
+\def\sy@ean@lquietzone#1{\sy@ean@quietzone{\hss\strut#1\kern\p@}}
+\def\sy@ean@rquietzone#1{\sy@ean@quietzone{\kern\p@\strut#1\hss}}
 
-\begingroup
-\let\W\relax
-\let\B\relax
-\def\sy@ean@lsymbol#1#2#3#4{\W#1\B#2\W#3\B#4}
-\def\sy@ean@rsymbol#1#2#3#4{\B#1\W#2\B#3\W#4}
+\def\sy@ean@lsymbol#1#2#3#4{\sy@linear@spacesandbars#1#2#3#4\sy@marker}
+\def\sy@ean@rsymbol#1#2#3#4{\sy@linear@barsandspaces#1#2#3#4\sy@marker}
 
-\xdef\sy@ean@L#1{%
-	\noexpand\ifcase#1 \sy@ean@lsymbol3211% 0
-	\noexpand\or       \sy@ean@lsymbol2221% 1
-	\noexpand\or       \sy@ean@lsymbol2122% 2
-	\noexpand\or       \sy@ean@lsymbol1411% 3
-	\noexpand\or       \sy@ean@lsymbol1132% 4
-	\noexpand\or       \sy@ean@lsymbol1231% 5
-	\noexpand\or       \sy@ean@lsymbol1114% 6
-	\noexpand\or       \sy@ean@lsymbol1312% 7
-	\noexpand\or       \sy@ean@lsymbol1213% 8
-	\noexpand\else     \sy@ean@lsymbol3112% 9
-	\noexpand\fi
+\def\sy@ean@L#1{%
+	\ifcase\numexpr#1\relax
+	          \sy@ean@lsymbol3211% 0
+	\or       \sy@ean@lsymbol2221% 1
+	\or       \sy@ean@lsymbol2122% 2
+	\or       \sy@ean@lsymbol1411% 3
+	\or       \sy@ean@lsymbol1132% 4
+	\or       \sy@ean@lsymbol1231% 5
+	\or       \sy@ean@lsymbol1114% 6
+	\or       \sy@ean@lsymbol1312% 7
+	\or       \sy@ean@lsymbol1213% 8
+	\else     \sy@ean@lsymbol3112% 9
+	\fi
 }
 
-\xdef\sy@ean@G#1{%
-	\noexpand\ifcase#1 \sy@ean@lsymbol1123% 0
-	\noexpand\or       \sy@ean@lsymbol1222% 1
-	\noexpand\or       \sy@ean@lsymbol2212% 2
-	\noexpand\or       \sy@ean@lsymbol1141% 3
-	\noexpand\or       \sy@ean@lsymbol2311% 4
-	\noexpand\or       \sy@ean@lsymbol1321% 5
-	\noexpand\or       \sy@ean@lsymbol4111% 6
-	\noexpand\or       \sy@ean@lsymbol2131% 7
-	\noexpand\or       \sy@ean@lsymbol3121% 8
-	\noexpand\else     \sy@ean@lsymbol2113% 9
-	\noexpand\fi
+\def\sy@ean@G#1{%
+	\ifcase\numexpr#1\relax
+	          \sy@ean@lsymbol1123% 0
+	\or       \sy@ean@lsymbol1222% 1
+	\or       \sy@ean@lsymbol2212% 2
+	\or       \sy@ean@lsymbol1141% 3
+	\or       \sy@ean@lsymbol2311% 4
+	\or       \sy@ean@lsymbol1321% 5
+	\or       \sy@ean@lsymbol4111% 6
+	\or       \sy@ean@lsymbol2131% 7
+	\or       \sy@ean@lsymbol3121% 8
+	\else     \sy@ean@lsymbol2113% 9
+	\fi
 }
 
-\xdef\sy@ean@R#1{%
-	\noexpand\ifcase#1 \sy@ean@rsymbol3211% 0
-	\noexpand\or       \sy@ean@rsymbol2221% 1
-	\noexpand\or       \sy@ean@rsymbol2122% 2
-	\noexpand\or       \sy@ean@rsymbol1411% 3
-	\noexpand\or       \sy@ean@rsymbol1132% 4
-	\noexpand\or       \sy@ean@rsymbol1231% 5
-	\noexpand\or       \sy@ean@rsymbol1114% 6
-	\noexpand\or       \sy@ean@rsymbol1312% 7
-	\noexpand\or       \sy@ean@rsymbol1213% 8
-	\noexpand\else     \sy@ean@rsymbol3112% 9
-	\noexpand\fi
+\def\sy@ean@R#1{%
+	\ifcase\numexpr#1\relax
+	          \sy@ean@rsymbol3211% 0
+	\or       \sy@ean@rsymbol2221% 1
+	\or       \sy@ean@rsymbol2122% 2
+	\or       \sy@ean@rsymbol1411% 3
+	\or       \sy@ean@rsymbol1132% 4
+	\or       \sy@ean@rsymbol1231% 5
+	\or       \sy@ean@rsymbol1114% 6
+	\or       \sy@ean@rsymbol1312% 7
+	\or       \sy@ean@rsymbol1213% 8
+	\else     \sy@ean@rsymbol3112% 9
+	\fi
 }
-\endgroup
 
 \def\sy@ean@group#1#2{%
 	\vtop{%
 		\edef\sy@ean@temp{#1.#2}%
-		\dimen4=\z@
+		\sy@depth\z@
 		\setbox\z@=\hbox{%
 			\expandafter\sy@ean@groupx\sy@ean@temp
 		}%
@@ -137,7 +135,7 @@
 		\box\z@
 		\nointerlineskip
 		\vskip\p@
-		\hb@xt@\dimen@{\hss\sy@ean@font{#2}\hss}%
+		\hb@xt@\dimen@{\hss\sy@font{\strut#2}\hss}%
 	}%
 }
 
@@ -158,11 +156,11 @@
 
 \def\sy@upc@#1{%
 	\sy@ean@setup
-	\ifnum\sy@c=12\else
+	\ifnum\sy@c=12 \else
 		\sy@error{UPC-#1 requires 12 digits}%
 	\fi
-	\expandafter\upc@split\sy@msg
-	\hbox{\csname upc@#1\endcsname}%
+	\expandafter\sy@upc@split\sy@msg
+	\hbox{\csname sy@upc@#1\endcsname}%
 }
 
 \def\sy@upc@split#1#2#3#4#5#6{%
@@ -177,13 +175,13 @@
 
 \def\sy@upc@A{%
 	\sy@ean@lquietzone\sy@upc@numsys
-	\B1\W1\B1%
+	\sy@linear@barsandspaces111\sy@marker
 	\sy@ean@L\sy@upc@numsys
 	\sy@ean@group{LLLLL}\sy@upc@left
-	\W1\B1\W1\B1\W1%
+	\sy@linear@spacesandbars11111\sy@marker
 	\sy@ean@group{RRRRR}\sy@upc@right
 	\sy@ean@R\sy@upc@check
-	\B1\W1\B1%
+	\sy@linear@barsandspaces111\sy@marker
 	\sy@ean@rquietzone\sy@upc@check
 }
 
@@ -232,13 +230,13 @@
 		\let\sy@ean@O\sy@ean@L
 		\let\sy@ean@E\sy@ean@G
 	\or	\let\sy@ean@O\sy@ean@G
-		\let\sy@ean@O\sy@ean@L
+		\let\sy@ean@E\sy@ean@L
 	\else	\sy@upce@error
 	\fi
 	\sy@ean@lquietzone{}%
-	\B1\W1\B1%
+	\sy@linear@barsandspaces111\sy@marker
 	\sy@ean@group\sy@upce@parity\sy@upce@code
-	\W1\B1\W1\B1\W1\B1%
+	\sy@linear@spacesandbars111111\sy@marker
 	\sy@ean@rquietzone{}%
 }
 
@@ -247,7 +245,7 @@
 \def\sy@upce@iv#1#2#3#4#5{#1#2#3#4}
 
 \def\sy@upce@parity{%
-	\ifcase\upc@check EEEOOO% 0
+	\ifcase\sy@upc@check EEEOOO% 0
 	\or               EEOEOO% 1
 	\or               EEOOEO% 2
 	\or               EEOOOE% 3
@@ -269,11 +267,11 @@
 	\expandafter\sy@ean@xiii@split\sy@msg
 	\hbox{%
 		\sy@ean@lquietzone\sy@ean@first
-		\B1\W1\B1%
+		\sy@linear@barsandspaces111\sy@marker
 		\sy@ean@group\sy@ean@xiii@parity\sy@ean@left
-		\W1\B1\W1\B1\W1%
+		\sy@linear@spacesandbars11111\sy@marker
 		\sy@ean@group{RRRRRR}\sy@ean@right
-		\B1\W1\B1%
+		\sy@linear@barsandspaces111\sy@marker
 		\sy@ean@rquietzone>%
 	}%
 }
@@ -308,13 +306,15 @@
 		\sy@error{EAN-8 requires 8 digits}%
 	\fi
 	\expandafter\sy@ean@viii@split\sy@msg
-	\sy@ean@lquietzone<%
-	\B1\W1\B1%
-	\sy@ean@group{LLLL}\sy@ean@left
-	\W1\B1\W1\B1\W1%
-	\sy@ean@group{RRRR}\sy@ean@right
-	\B1\W1\B1%
-	\sy@ean@rquietzone>%
+	\hbox{%
+		\sy@ean@lquietzone<%
+		\sy@linear@barsandspaces111\sy@marker
+		\sy@ean@group{LLLL}\sy@ean@left
+		\sy@linear@spacesandbars11111\sy@marker
+		\sy@ean@group{RRRR}\sy@ean@right
+		\sy@linear@barsandspaces111\sy@marker
+		\sy@ean@rquietzone>%
+	}%
 }
 
 \def\sy@ean@viii@split#1#2#3#4#5#6#7#8{%

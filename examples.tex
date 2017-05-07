@@ -1,0 +1,83 @@
+\documentclass{article}
+\usepackage{fullpage}
+\usepackage{trace}
+\usepackage{symbology}
+\usepackage[svgnames]{xcolor}
+
+\errorcontextlines8
+
+\begin{document}
+\section{QR}
+\barcode[width=58pt,quietzone=true]{qr}{01234567890}
+
+\vskip1in
+\barcode[width=3in,version=10,lightcolor=LightGray,darkcolor=DarkBlue]{qr}{Symbology}
+
+\vskip2in
+\barcode{qr}{Aren't barcodes great?}
+
+\section{UPC-A, UPC-E, EAN-13, and EAN-8}
+\barcode{upca}{042100005264}
+\barcode{upce}{042100005264}
+
+\vskip2in
+\barcode{ean13}{5901234123457}
+
+\vskip2in
+\barcode{ean8}{96385074}
+
+\newpage
+\section{Code 39}
+\barcode[letterpersymbol,font={\huge\textcolor{DarkGreen}},xwidth=2pt,height=12pt,darkcolor=DarkBlue]{code39}{SYMBOLOGY}
+
+\vskip2in
+\barcode[letterpersymbol]{code39}{01234-56789-ABCDE-FGHIJ}
+
+\vskip2in
+\barcode[letterpersymbol]{code39}{KLMNO-PQRST-UVWXY-Z. +/$+$}
+
+\vskip2in
+\barcode[letterpersymbol,checksum]{code39}{CHECK DIGIT-}
+
+\vskip2in
+\barcode[letterpersymbol,extended]{code39}{abcdxyz !}
+
+\vskip2in
+\barcode[letterpersymbol,extended]{code39}{"#$%&'()*+,$}
+
+\vskip2in
+\barcode[letterpersymbol,extended]{code39}{\{|\}~:;<=>?}
+
+\newpage
+\section{Code 128}
+\barcode{code128}{Foo1234567}
+
+\vskip2in
+\barcode{code128}{Here is another Code 128}
+
+\vskip2in
+\barcode{code128}{\\|\{\}()|}
+
+\newpage
+\section{Code 11}
+\barcode[letterpersymbol,checksum=none]{code11}{123-45}
+
+\vskip2in
+\barcode[letterpersymbol,checksum=C]{code11}{123-45}
+
+\vskip2in
+\barcode[letterpersymbol,checksum=K]{code11}{123-45}
+
+\vskip2in
+\barcode[letterpersymbol]{code11}{1111111111111}
+
+\vskip2in
+\barcode[letterpersymbol,xwidth=2pt]{code11}{01234-56789}
+
+\newpage
+\section{Codabar}
+\barcode[letterpersymbol]{codabar}{01234-56789$:/.+$}
+
+\vskip2in
+\barcode[rationalized,start=C,stop=*,letterpersymbol]{codabar}{01234-56789$:/.+$}
+\end{document}

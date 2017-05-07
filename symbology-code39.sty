@@ -4,7 +4,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Code 39
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\define@boolkey[SY]{code39}[sy@tn@]{checksum}[true]{}
+\define@boolkeys[SY]{code39}[sy@tn@]{checksum,extended}[true]
 
 \csdef{sy@code39@family}{linear}
 \csdef{sy@code39@defaults}{}
@@ -14,10 +14,22 @@
 		\sy@linear@symbol{121121211}{*}%
 		\sy@linear@space1%
 		\sy@c\z@
-		\sy@foreach@token{%
-			\sy@tn@symbol
-			\sy@linear@space1%
-		}%
+		\ifsy@tn@extended
+			\sy@foreach@token\sy@msg{%
+				\begingroup
+				\edef\sy@temp{\expandafter\sy@tn@extended@encode\expandafter{\sy@token}}%
+				\sy@foreach@token\sy@temp{%
+					\sy@tn@symbol
+					\sy@linear@space1%
+				}%
+				\endgroup
+			}%
+		\else
+			\sy@foreach@token\sy@msg{%
+				\sy@tn@symbol
+				\sy@linear@space1%
+			}%
+		\fi
 		\ifsy@tn@checksum
 			\sy@a=\sy@c
 			\divide\sy@a43
@@ -96,14 +108,7 @@
 }
 
 \def\sy@tn@check@symbol{%
-	\edef\sy@token{%
-		\ifcase\sy@a
-		    0\or 1\or 2\or 3\or 4\or 5\or 6\or 7\or 8\or 9\or A\or B%
-		\or C\or D\or E\or F\or G\or H\or I\or J\or K\or L\or M\or N%
-		\or O\or P\or Q\or R\or S\or T\or U\or V\or W\or X\or Y\or Z%
-		\or -\or .\or \space\or\$\or /\or +\or\%%
-		\fi
-	}%
+	\edef\sy@token{\sy@tn@letter\sy@a}%
 	\ifnum\sy@a<39
 		\sy@inrangetrue
 		\ifnum\sy@a<10
@@ -170,3 +175,31 @@
 
 \def\sy@tn@interleave#1#2#3#4#5#6#7#8#9{#1#6#2#7#3#8#4#9#5}
 
+\begingroup
+\catcode`\$=12
+\catcode`\%=12
+\catcode1=14
+\gdef\sy@tn@letter#1{\sy@select@item{#1}{0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%}}
+
+\gdef\sy@tn@extended@encode#1{^^A
+	\ifnum`#1=\z@      %U^^A
+	\else\ifnum`#1<27  $\sy@ALPHABET{`#1}^^A
+	\else\ifnum`#1<32  %\sy@ALPHABET{`#1-26}^^A
+	\else\ifnum`#1=32  \space
+	\else\ifnum`#1<45  /\sy@ALPHABET{`#1-32}^^A
+	\else\ifnum`#1<47  #1^^A
+	\else\ifnum`#1=47  /O^^A
+	\else\ifnum`#1<58  #1^^A
+	\else\ifnum`#1=58  /Z^^A
+	\else\ifnum`#1<64  %\sy@ALPHABET{`#1-53}^^A
+	\else\ifnum`#1=64  %V^^A
+	\else\ifnum`#1<91  #1^^A
+	\else\ifnum`#1<96  %\sy@ALPHABET{`#1-80}^^A
+	\else\ifnum`#1=96  %W^^A
+	\else\ifnum`#1<123 +\sy@ALPHABET{`#1-96}^^A
+	\else\ifnum`#1<128 %\sy@ALPHABET{`#1-107}^^A
+	\else\sy@error{Extended Code 39 only supports 7-bit ASCII `#1'
+	(\number`#1) is out of range}^^A
+	\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+}
+\endgroup

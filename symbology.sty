@@ -256,12 +256,13 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Iterate over the barcode data
 %
-% Iterate over each token in \sy@msg and expand #1 with \sy@token set to the
-% token.
+% \sy@foreach@token\cs{loop body}
+% Iterate over each token in \cs and expand loop body with \sy@token set to
+% the token.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\newcommand*\sy@foreach@token[1]{%
-	\def\sy@foreach@v{#1}%
-	\expandafter\futurelet\expandafter\sy@token\expandafter\sy@foreach\sy@msg\sy@marker
+\newcommand*\sy@foreach@token[2]{%
+	\def\sy@foreach@v{#2}%
+	\expandafter\futurelet\expandafter\sy@token\expandafter\sy@foreach#1\sy@marker
 }
 
 \def\sy@marker{\sy@marker@err}
@@ -417,6 +418,38 @@
 		\expandafter\sy@linear@barsandspaces
 	\fi
 }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Select a character token.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sy@ALPHABET#1{\sy@select@item{#1}{ABCDEFGHIJKLMNOPQRSTUVWXYZ}}
+\def\sy@alphabet#1{\sy@select@item{#1}{abcdefghijklmnopqrstuvwxyz}}
+%\def\sy@select@item#1#2#3#4{%
+%	\ifnum\numexpr#1\relax<9
+%		\csuse{sy@select@\romannumeral\numexpr#1+1}#2%
+%	\else\ifnum\numexpr#1\relax<18
+%		\csuse{sy@select@\romannumeral\numexpr#1-8}#3%
+%	\else
+%		\csuse{sy@select@\romannumeral\numexpr#1-17}#4%
+%	\fi\fi
+%}
+%\sy@for \sy@a=\@ne to10 by\@ne{%
+%	\edef\sy@temp{\noexpand\csdef{sy@select@\romannumeral\sy@a}##1##2##3##4##5##6##7##8##9{##\number\sy@a}}%
+%	\sy@temp
+%}
+
+\def\sy@select@item#1#2{%
+	\expandafter\sy@select@itemx\expandafter{\number\numexpr#1-1}#2\sy@marker
+}
+\def\sy@select@itemx#1#2{%
+	\ifnum#1<\@ne
+		#2\expandafter\sy@select@end
+	\else
+		\expandafter\sy@select@itemx\expandafter{%
+			\number\numexpr#1-1\expandafter}%
+	\fi
+}
+\def\sy@select@end#1\sy@marker{}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Load the packages.

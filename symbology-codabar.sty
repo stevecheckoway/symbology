@@ -28,7 +28,7 @@
 	\hbox{%
 		\sy@cb@symbol{\sy@a}{\sy@cb@start}% Start
 		\sy@linear@space1%
-		\sy@foreach@token{%
+		\sy@foreach@token\sy@msg{%
 			\sy@c=\expandafter`\sy@token\relax
 			\sy@check@range\sy@c{`0}{`9}%
 			\ifsy@inrange

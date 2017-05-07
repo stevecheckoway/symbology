@@ -17,7 +17,7 @@
 	% gf@a and gf@b will be the running totals for the C and K checksums.
 	% a and b will be the corresponding weights.
 	\sy@c=\z@
-	\sy@foreach@token{\advance\sy@c\@ne}%
+	\sy@foreach@token\sy@msg{\advance\sy@c\@ne}%
 	\mathchardef\sy@len=\sy@c
 	\sy@gf@a=\z@
 	\sy@gf@b=\z@
@@ -25,7 +25,7 @@
 	\sy@b=\sy@mod{\sy@c+\@ne}9%
 	\hbox{%
 		\sy@oo@symbol{11}{*}% Start
-		\sy@foreach@token{%
+		\sy@foreach@token\sy@msg{%
 			\sy@c=\expandafter`\sy@token\relax
 			\sy@check@range\sy@c{`0}{`9}%
 			\ifsy@inrange

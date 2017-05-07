@@ -85,7 +85,7 @@
 	\sy@ote@lastnumericfalse
 	% Fill the array one column at a time.
 	\sy@gf@n=\z@
-	\sy@foreach@token{%
+	\sy@foreach@token\sy@msg{%
 		\advance\sy@gf@n\@ne
 		\count@=\expandafter`\sy@token\relax
 		\sy@array@set\sy@input{\sy@gf@n}{\count@}%

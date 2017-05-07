@@ -255,7 +255,7 @@
 	\sy@gf@n=\z@
 	\sy@a=\@ne % Numeric.
 	\sy@b=\@ne % Alphanumeric.
-	\sy@foreach@token{%
+	\sy@foreach@token\sy@msg{%
 		\advance\sy@gf@n\@ne
 		\ifnum\sy@b=\@ne
 			\sy@c=\expandafter`\sy@token
@@ -619,7 +619,7 @@
 	\fi\fi
 	% Encode numbers three at a time.
 	\count@=\z@
-	\sy@foreach@token{%
+	\sy@foreach@token\sy@msg{%
 		\sy@b=\numexpr10*\sy@b+\sy@token\relax
 		\advance\count@\@ne
 		\ifnum\count@=\thr@@
@@ -649,7 +649,7 @@
 	\fi\fi
 	% Encode characters two at a time.
 	\count@=\z@
-	\sy@foreach@token{%
+	\sy@foreach@token\sy@msg{%
 		\sy@gf@b=\expandafter`\sy@token
 		\sy@check@range\sy@gf@b{`0}{`9}%
 		\multiply\sy@b45
@@ -693,7 +693,7 @@
 		\sy@encode@bits{16}%
 	\fi
 	% Encode bytes.
-	\sy@foreach@token{%
+	\sy@foreach@token\sy@msg{%
 		% Get the ASCII value.
 		\sy@b=\expandafter`\sy@token
 		\sy@encode@bits{8}%

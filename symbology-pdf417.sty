@@ -1,0 +1,445 @@
+\ProvidesPackage{symbology-pdf417}
+  [2017/05/03 v1.0 Construct Code 11 barcodes]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% PDF 417
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\csdef{sy@pdf417@family}{2d}
+
+\csdef{sy@pdf417}{%
+	\sy@pdf@encode
+}
+
+% PDF 417 has 3 major compaction modes: text, byte, and numeric. The text
+% compaction mode has three four sub-modes: alpha, lower, mixed, and
+% punctuation. There are latch codewords to switch to switch between the major
+% modes as well as a shift codeword available in the text mode for switching
+% to byte compaction for a single byte.
+%
+% The text compaction sub-modes divide each PDF 417 codeword into two
+% characters. They have a collection of shift and latch characters to the
+% other sub-modes that have sub-mode specific encodings and availability.
+% (E.g., only the mixed sub-mode can latch punctuation and once in the
+% punctuation sub-mode, the only way to leave it is to latch the alpha
+% sub-mode.)
+%
+% The byte compaction mode encodes 6m+n bytes (for 0 <= n < 6) in 5m+n
+% codewords. For groups of 6 bytes, a base-256 to base-900 encoding is used.
+% For the remaining n < 6 bytes, they are encoded directly.
+%
+% The numeric compaction mode encodes 44m digits in 15m codewords and
+% 44m+n(for 0 < n < 44) in 15m+floor(n/3)+1 codewords.
+%
+% The symbol starts in text compaction mode, alpha sub-mode. The first
+% codeword is the symbol length descriptor [SDL].
+%
+% To construct the optimal encoding, we can use dynamic programming. Given an
+% input of length n, let C be a 7xn cost (in number of codewords) such that
+% ceil(C[m,k]/2) is the minimum cost (in number of codewords) to encode the
+% first k input bytes ending in (sub-)mode m.
+%
+% Computing C[m,k] is involved and the procedure is commented below.
+\def\sy@pdf@encode{%
+	\chardef\sy@alpha=\z@
+	\chardef\sy@lower=\@ne
+	\chardef\sy@mixed=\tw@
+	\chardef\sy@punct=\thr@@
+	\chardef\sy@byte=4
+	\chardef\sy@num=5
+	\sy@make@array\sy@input{sy@I}%
+	\sy@make@array\sy@data{sy@D}%
+	\sy@make@matrix\sy@cost{sy@C}%
+	\sy@make@array\sy@numcount{sy@N}%
+	\sy@make@array\sy@bytecount{sy@B}%
+	\def\C[##1,##2]{\sy@cost{##1}{##2}}%
+	\def\setC[##1,##2]=##3{\sy@matrix@big@set\sy@cost{##1}{##2}{##3}}%
+	% Save the input in the sy@input array and count its length.
+	\sy@c=\@ne
+	\sy@foreach@token\sy@msg{%
+		\sy@a=\expandafter`\sy@token
+		\sy@array@set\sy@input{\sy@c}{\sy@a}%
+		\advance\sy@c\@ne
+	}%
+	\mathchardef\sy@len\sy@c % This is actually len+1. Fix this below.
+	% The symbol starts with the {SLD} and in the text/alpha mode.
+	\setC[\sy@alpha,\z@]=\tw@   % {SLD}
+	\setC[\sy@lower,\z@]=\thr@@ % {SLD} [LL]
+	\setC[\sy@mixed,\z@]=\thr@@ % {SLD} [ML]
+	\setC[\sy@punct,\z@]=4%     % {SLD} [ML] [PL]
+	\setC[\sy@byte, \z@]=4%     % {SLD} {LATCH B}
+	\setC[\sy@num,  \z@]=4%     % {SLD} {LATCH N}
+	\sy@array@big@set\sy@numcount{\z@}{\z@}%
+	\sy@array@big@set\sy@bytecount{\z@}{\z@}%
+	\sy@gf@n=\z@
+	% Now fill we fill the table.
+	\sy@for\sy@idx=\@ne to\sy@len by\@ne{%
+		\sy@a=\sy@input{\sy@idx}%
+		\sy@a=\sy@pdf@classify\sy@a\relax
+		% Update the next column of the table.
+		%
+		% Text/alpha.
+		%
+		% Compute c = min_m (cost[m, idx-1] + switch(m, alpha))
+		% alpha -> alpha
+		\sy@c=\C[\sy@alpha,\sy@idx-1]% No cost alpha -> alpha
+		% lower -> alpha
+		\sy@b=\numexpr \C[\sy@lower,\sy@idx-1]+2\relax % [ML] [AL] (or {LATCH A})
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% mixed -> alpha
+		\sy@b=\numexpr \C[\sy@mixed,\sy@idx-1]+1\relax % [AL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% punct -> alpha
+		\sy@b=\numexpr \C[\sy@punct,\sy@idx-1]+1\relax % [AL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% byte -> alpha
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+2\relax % {LATCH A}
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% num -> alpha
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+2\relax % {LATCH A}
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		%
+		% Update c to include the cost of encoding the character in alpha.
+		\ifcase\sy@a
+			\advance\sy@c\@ne % space
+		\or	\advance\sy@c\@ne % A-Z
+		\or	\sy@c=\@M         % a-z
+		\or	\sy@c=\@M         % 0-9
+		\or	\sy@c=\@M         % mixed exclusive (not 0-9)
+		\or	\advance\sy@c\tw@ % [PS] punct exclusive
+		\or	\advance\sy@c\tw@ % [PS] mixed-punct shared
+		\else	\advance\sy@c4    % {SHIFT B} non-text
+			\ifodd\sy@c \advance\sy@c\@ne \fi
+		\fi
+		\setC[\sy@alpha,\sy@idx]=\sy@c
+		%
+		% Text/lower.
+		%
+		% Compute c = min_m (cost[m, idx-1] + switch(m, lower)).
+		% alpha -> lower
+		\sy@c=\numexpr \C[\sy@alpha,\sy@idx-1]+1\relax % [LL]
+		% lower -> lower
+		\sy@b=\C[\sy@lower,\sy@idx-1]% no cost
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% mixed -> lower
+		\sy@b=\numexpr \C[\sy@mixed,\sy@idx-1]+1\relax % [LL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% punct -> lower
+		\sy@b=\numexpr \C[\sy@punct,\sy@idx-1]+2\relax % [AL] [LL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% byte -> lower
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+3\relax % {LATCH A} [LL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% num -> lower
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+3\relax % {LATCH A} [LL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		%
+		% Update c to include the cost of encoding the character in lower.
+		\ifcase\sy@a
+			\advance\sy@c\@ne % space
+		\or	\advance\sy@c\tw@ % [AS] A-Z
+		\or	\advance\sy@c\@ne % a-z
+		\or	\sy@c=\@M         % 0-9
+		\or	\sy@c=\@M         % mixed exclusive (not 0-9)
+		\or	\advance\sy@c\tw@ % [PS] punct exclusive
+		\or	\advance\sy@c\tw@ % [PS] mixed-punct shared
+		\else	\advance\sy@c4    % {SHIFT B} non-text
+			\ifodd\sy@c \advance\sy@c\@ne \fi
+		\fi
+		\setC[\sy@lower,\sy@idx]=\sy@c
+		%
+		% Text/mixed.
+		%
+		% Compute c = min_m (cost[m, idx-1] + switch(m, mixed)).
+		% alpha -> mixed
+		\sy@c=\numexpr \C[\sy@alpha,\sy@idx-1]+1\relax % [ML]
+		% lower -> mixed
+		\sy@b=\numexpr \C[\sy@lower,\sy@idx-1]+1\relax % [ML]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% mixed -> mixed
+		\sy@b=\C[\sy@mixed,\sy@idx-1]% no cost
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% punct -> mixed
+		\sy@b=\numexpr \C[\sy@punct,\sy@idx-1]+2\relax % [AL] [ML]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% byte -> mixed
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+3\relax % {LATCH A} [ML]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% num -> mixed
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+3\relax % {LATCH A} [ML]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		%
+		% Update c to include the cost of encoding the character in mixed.
+		\ifcase\sy@a
+			\advance\sy@c\@ne % space
+		\or	\sy@c=\@M         % A-Z
+		\or	\sy@c=\@M         % a-z
+		\or	\advance\sy@c\@ne % 0-9
+		\or	\advance\sy@c\@ne % mixed exclusive (not 0-9)
+		\or	\advance\sy@c\tw@ % [PS] punct exclusive
+		\or	\advance\sy@c\@ne % mixed-punct shared
+		\else	\advance\sy@c4    % {SHIFT B} non-text
+			\ifodd\sy@c \advance\sy@c\@ne \fi
+		\fi
+		\setC[\sy@mixed,\sy@idx]=\sy@c
+		%
+		% Text/punctuation.
+		%
+		% Compute c = min_m (cost[m, idx-1] + switch(m, punct)).
+		% alpha -> punct
+		\sy@c=\numexpr \C[\sy@alpha,\sy@idx-1]+2\relax % [ML] [PL]
+		% lower -> punct
+		\sy@b=\numexpr \C[\sy@lower,\sy@idx-1]+2\relax % [ML] [PL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% mixed -> punct
+		\sy@b=\numexpr \C[\sy@mixed,\sy@idx-1]+1\relax % [PL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% punct -> punct
+		\sy@b=\C[\sy@punct,\sy@idx-1]\relax
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% byte -> punct
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+4\relax % {LATCH A} [ML] [PL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		% num -> punct
+		\sy@b=\numexpr \C[\sy@byte,\sy@idx-1]+4\relax % {LATCH A} [ML] [PL]
+		\ifnum\sy@b<\sy@c \sy@c=\sy@b\fi
+		%
+		% Update c to include the cost of encoding the character in punct.
+		\ifcase\sy@a
+			\sy@c=\@M         % space
+		\or	\sy@c=\@M         % A-Z
+		\or	\sy@c=\@M         % a-z
+		\or	\sy@c=\@M         % 0-9
+		\or	\sy@c=\@M         % mixed exclusive (not 0-9)
+		\or	\advance\sy@c\@ne % punct exclusive
+		\or	\advance\sy@c\@ne % mixed-punct shared
+		\else	\advance\sy@c4    % {SHIFT B} non-text
+			\ifodd\sy@c \advance\sy@c\@ne \fi
+		\fi
+		\setC[\sy@punct,\sy@idx]=\sy@c
+		%
+		% Byte.
+		%
+		% Define
+		%   f(k) = min_{mode != byte} ceil(C[mode,k]/2)
+		% which is the minimum cost in symbols (not "half" symbols) of
+		% encoding the first k characters of the input such that it
+		% doesn't end in byte compaction.
+		%
+		% Define
+		%   g(n) = 5*floor(n/6) + n mod 6
+		% which is the cost of encoding n characters in byte compaction.
+		%
+		% To find the minimum way to encode the input up to position
+		% idx, we consider all positions k < idx to be the final
+		% position to be encoded in something other than byte
+		% compaction. Since C stores the cost in "half" symbols,
+		% multiply the result by 2.
+		%   C[byte,idx] = 2*min_{0 <= k < idx} (f(k) + 1 + g(idx-k)).
+		% The plus 1 is for the byte compaction mode switch symbol.
+		% 
+		% This results in O(n^2) time to determine the optimal
+		% encoding. We can do better by noting that g(n) = g(n-6)+5
+		% (for n >= 6). Substituting for g(n) and splitting the range
+		% of the min, we get
+		%  C[byte,idx] = 2*min { min_{0 <= k < idx-6}   (f(k) + 1 + g(idx-k)),
+		%                        min_{idx-6 <= k < idx} (f(k) + 1 + g(idx-k)) }
+		%              = 2*min { min_{0 <= k < idx-6}   (f(k) + 1 + g(idx-6-k) + 5),
+		%                        min_{idx-6 <= k < idx} (f(k) + 1 + g(idx-k)) }
+		%              = min { C[byte,idx-6] + 10,
+		%                      2*min_{idx-6 <= k < idx} (f(k) + g(idx-k)) + 2}.
+		%
+		% Start by computing the inner min.
+		\sy@c=\@M
+		\sy@gf@a=\ifnum\sy@idx<6 6 \else\sy@idx\fi
+		\sy@for \sy@gf@a=\sy@gf@a-6 to\sy@idx by\@ne{%
+			% b = f(k)
+			\sy@b=5000
+			\count@=\numexpr\C[\sy@alpha,\sy@gf@a]/2\relax
+			\ifnum\count@<\sy@b \sy@b=\count@\fi
+			\count@=\numexpr\C[\sy@lower,\sy@gf@a]/2\relax
+			\ifnum\count@<\sy@b \sy@b=\count@\fi
+			\count@=\numexpr\C[\sy@mixed,\sy@gf@a]/2\relax
+			\ifnum\count@<\sy@b \sy@b=\count@\fi
+			\count@=\numexpr\C[\sy@punct,\sy@gf@a]/2\relax
+			\ifnum\count@<\sy@b \sy@b=\count@\fi
+			\count@=\numexpr\C[\sy@num,\sy@gf@a]/2\relax
+			\ifnum\count@<\sy@b \sy@b=\count@\fi
+			% b += g(idx-k)
+			\count@=\sy@idx
+			\advance\count@-\sy@gf@a
+			\sy@gf@b=\count@
+			\divide\sy@gf@b6
+			\sy@gf@r=\sy@gf@b
+			\multiply\sy@gf@r5
+			\advance\sy@b\sy@gf@r
+			\multiply\sy@gf@b-6
+			\advance\count@\sy@gf@b
+			\advance\sy@b\count@
+			% If b < c then c = b.
+			\ifnum\sy@b<\sy@c \sy@c=\sy@b \fi
+		}%
+		\advance\sy@c\sy@c
+		\advance\sy@c\tw@
+		% Take the minimum with C[byte, idx-6].
+		\ifnum\sy@idx>5
+			\count@=\C[\sy@byte,\sy@idx-6]%
+			\advance\count@10
+			\ifnum\count@<\sy@c \sy@c=\count@ \fi
+		\fi
+		\setC[\sy@byte,\sy@idx]=\sy@c
+		%
+		% Number.
+		%
+		% This is a minor variation on the byte compaction case.
+		%
+		% Let f(k) = min_{mode != num} ceil(C[mode,k]/2) and
+		%     g(n) = if 44|n then 15*n/44
+		%                    else 15*floor(n/44) + floor((n mod 44/3) + 1.
+		%
+		% To find the minimum way to encode the input up to position
+		% idx, we consider all positions k < idx to be the final
+		% position to be encoded in something other than numeric
+		% compaction. Since C stores the cost in "half" symbols,
+		% multiply the result by 2.
+		%   C[numeric,idx] = 2*min_{0 <= k < idx} (f(k) + 1 + g(idx-k)).
+		% The plus 1 is for the numeric compaction mode switch symbol.
+		% 
+		% Substituting g(n) = g(n-44) + 15 and splitting the range of
+		% the min gives
+		%  C[num,idx] = 2*min { min_{0 <= k < idx-44}   (f(k) + 1 + g(idx-k)),
+		%                       min_{idx-44 <= k < idx} (f(k) + 1 + g(idx-k)) }
+		%             = 2*min { min_{0 <= k < idx-44}   (f(k) + 1 + g(idx-44-k) + 15),
+		%                       min_{idx-44 <= k < idx} (f(k) + 1 + g(idx-k)) }
+		%             = min { C[num,idx-44] + 30,
+		%                     2*min_{idx-44 <= k < idx} (f(k) + g(idx-k)) + 2}.
+		% Of course, this isn't quite correct because unlike the byte
+		% compaction, the numeric compaction can only compress numbers.
+		% To that end, we use gf@n to keep track of the number of
+		% numbers seen in the current run of numbers and use that to
+		% compute the lower bound, where appropriate.
+		\sy@c=\@M
+		\ifnum\sy@a=\thr@@ % 0-9
+			\advance\sy@gf@n\@ne
+			% Start by computing the inner min.
+			\count@=\if\sy@gf@n>44 44 \else \sy@gf@n \fi
+			\sy@for \sy@gf@a=\sy@idx-\count@ to\sy@idx by\@ne{%
+				% b = f(k)
+				\sy@b=5000
+				\count@=\numexpr\C[\sy@alpha,\sy@gf@a]/2\relax
+				\ifnum\count@<\sy@b \sy@b=\count@\fi
+				\count@=\numexpr\C[\sy@lower,\sy@gf@a]/2\relax
+				\ifnum\count@<\sy@b \sy@b=\count@\fi
+				\count@=\numexpr\C[\sy@mixed,\sy@gf@a]/2\relax
+				\ifnum\count@<\sy@b \sy@b=\count@\fi
+				\count@=\numexpr\C[\sy@punct,\sy@gf@a]/2\relax
+				\ifnum\count@<\sy@b \sy@b=\count@\fi
+				\count@=\numexpr\C[\sy@byte,\sy@gf@a]/2\relax
+				\ifnum\count@<\sy@b \sy@b=\count@\fi
+				% b += g(idx-k)
+				\count@=\sy@idx
+				\advance\count@-\sy@gf@a
+				\sy@gf@b=\count@
+				\divide\sy@gf@b44
+				\sy@gf@r=\sy@gf@b
+				\multiply\sy@gf@r15
+				\advance\sy@b\sy@gf@r
+				\multiply\sy@gf@b-44
+				\advance\count@\sy@gf@b
+				\ifnum\count@>\z@
+					\divide\count@\thr@@
+					\advance\sy@b\count@
+					\advance\sy@b\@ne
+				\fi
+				% If b < c then c = b.
+				\ifnum\sy@b<\sy@c \sy@c=\sy@b \fi
+			}%
+			\advance\sy@c\sy@c
+			\advance\sy@c\tw@
+			% Take the minimum with C[byte, idx-44].
+			\ifnum\sy@gf@n>44
+				\count@=\C[\sy@byte,\sy@idx-44]%
+				\advance\count@30
+				\ifnum\count@<\sy@c \sy@c=\count@ \fi
+			\fi
+		\else
+			\sy@gf@n=\z@ % Not a number.
+		\fi
+		\setC[\sy@num,\sy@idx]=\sy@c
+	}
+	% XXX
+	\message{^^J\sy@msg}%
+	\message{^^Jalpha:}%
+	\sy@for\sy@a=\z@ to\sy@len by\@ne{\message{ \number\C[\sy@alpha,\sy@a]}}%
+	\message{^^Jlower:}%
+	\sy@for\sy@a=\z@ to\sy@len by\@ne{\message{ \number\C[\sy@lower,\sy@a]}}%
+	\message{^^Jmixed:}%
+	\sy@for\sy@a=\z@ to\sy@len by\@ne{\message{ \number\C[\sy@mixed,\sy@a]}}%
+	\message{^^Jpunct:}%
+	\sy@for\sy@a=\z@ to\sy@len by\@ne{\message{ \number\C[\sy@punct,\sy@a]}}%
+	\message{^^Jbyte: }%
+	\sy@for\sy@a=\z@ to\sy@len by\@ne{\message{ \number\C[\sy@byte,\sy@a]}}%
+	\message{^^Jnum:  }%
+	\sy@for\sy@a=\z@ to\sy@len by\@ne{\message{ \number\C[\sy@num,\sy@a]}}%
+	% Fix up len.
+	\count@=\sy@len
+	\advance\count@\m@ne
+	\mathchardef\sy@len=\count@
+}
+
+% 0 - space
+% 1 - A-Z
+% 2 - a-z
+% 3 - 0-9
+% 4 - &#+%=^ mixed exclusive (not 0-9)
+% 5 - ;<>@[\]_`~!\n"|()?{}' punct exclusive
+% 6 - ,:-.$/* mixed-punct shared
+% 7 - non-text
+\def\sy@pdf@classify#1{%
+	\ifnum#1<48
+		\ifnum#1=9        6% tab
+		\else\ifnum#1=13  6% \r
+		\else\ifnum#1<32  7% byte
+		\else\ifcase\numexpr#1-32\relax
+		          0% 32 space
+		\or       5% 33 !
+		\or       5% 34 "
+		\or       4% 35 #
+		\or       6% 36 $
+		\or       4% 37 %
+		\or       4% 38 &
+		\or       5% 39 '
+		\or       5% 40 (
+		\or       5% 41 )
+		\or       6% 42 *
+		\or       4% 43 +
+		\or       6% 44 ,
+		\or       6% 45 -
+		\or       6% 46 .
+		\else     6% 47 /
+		\fi\fi\fi\fi
+	\else\ifnum#1<58 3 % 0-9
+	\else\ifnum#1<65 
+		\ifcase\numexpr#1-58\relax
+		          6% 58 :
+		\or       5% 59 ;
+		\or       5% 60 <
+		\or       4% 61 =
+		\or       5% 62 >
+		\or       5% 63 ?
+		\else     5% 64 @
+		\fi
+	\else\ifnum#1<91 1% A-Z
+	\else\ifnum#1<97
+		\ifcase\numexpr#1-91\relax
+		          5% 91 [
+		\or       5% 92 \
+		\or       5% 93 ]
+		\or       4% 94 ^
+		\or       5% 95 _
+		\else     5% 96 `
+		\fi
+	\else\ifnum#1<123 2% a-z
+	\else\ifnum#1<127 5% {|}~
+	\else             7% byte
+	\fi\fi\fi\fi\fi\fi\fi
+}

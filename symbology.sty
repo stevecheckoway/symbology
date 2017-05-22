@@ -191,6 +191,10 @@
 	\chardef#1{#2}{#3}=\numexpr#4\relax
 }
 
+\newcommand*\sy@matrix@big@set[4]{%
+	\expandafter\expandafter\expandafter
+	\mathchardef#1{#2}{#3}=\numexpr#4\relax
+}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Matrix unsetter.
 %
@@ -463,3 +467,4 @@
 
 % 2D barcodes.
 \RequirePackage{symbology-qr}
+\RequirePackage{symbology-pdf417}
